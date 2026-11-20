@@ -79,7 +79,8 @@ export function Modal({
   const close = onClose ?? (() => useStore.getState().openModal(null));
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      // The completion pop-up sits above modals; Esc closes it first.
+      if (e.key === 'Escape' && !document.querySelector('[data-testid="completion-popup"]')) {
         e.stopPropagation();
         close();
       }

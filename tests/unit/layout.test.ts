@@ -45,7 +45,12 @@ describe('rotation', () => {
     const item = getCatalog('coffee_machine');
     expect(localToWorld(item, 15, 10, 1, 0, 1)).toEqual({ x: 14, z: 10 });
     const desk = { uid: 'd', catalogId: 'exec_desk', x: 1, z: 0, rot: 2 as const };
-    expect(itemCells(desk).filter((c) => c.kind === 'B').map((c) => [c.x, c.z]).sort()).toEqual([
+    expect(
+      itemCells(desk)
+        .filter((c) => c.kind === 'B')
+        .map((c) => [c.x, c.z])
+        .sort(),
+    ).toEqual([
       [1, 1],
       [2, 1],
     ]);
@@ -57,12 +62,20 @@ describe('rotation', () => {
 describe('furniture placement & collision', () => {
   const layout = createDefaultLayout();
   it('rejects overlap, out of bounds and the entrance tile', () => {
-    expect(validatePlacement(layout, { uid: 'n', catalogId: 'plant_big', x: 1, z: 7, rot: 0 })).toMatchObject({ ok: false });
-    expect(validatePlacement(layout, { uid: 'n', catalogId: 'sofa', x: 15, z: 6, rot: 0 })).toMatchObject({ ok: false });
-    expect(validatePlacement(layout, { uid: 'n', catalogId: 'plant_big', x: 7, z: 11, rot: 0 })).toMatchObject({ ok: false });
+    expect(
+      validatePlacement(layout, { uid: 'n', catalogId: 'plant_big', x: 1, z: 7, rot: 0 }),
+    ).toMatchObject({ ok: false });
+    expect(
+      validatePlacement(layout, { uid: 'n', catalogId: 'sofa', x: 15, z: 6, rot: 0 }),
+    ).toMatchObject({ ok: false });
+    expect(
+      validatePlacement(layout, { uid: 'n', catalogId: 'plant_big', x: 7, z: 11, rot: 0 }),
+    ).toMatchObject({ ok: false });
   });
   it('allows a rug under furniture but not a desk over a desk', () => {
-    expect(validatePlacement(layout, { uid: 'n', catalogId: 'rug', x: 3, z: 9, rot: 0 })).toMatchObject({ ok: true });
+    expect(
+      validatePlacement(layout, { uid: 'n', catalogId: 'rug', x: 3, z: 9, rot: 0 }),
+    ).toMatchObject({ ok: true });
   });
   it('refuses placements that cut off essential routes', () => {
     // Block the only door of the chief office (tile 4,3 inside / 5,3 outside).
@@ -70,9 +83,19 @@ describe('furniture placement & collision', () => {
     expect(r).toMatchObject({ ok: false });
   });
   it('refuses furniture straddling a wall', () => {
-    expect(validatePlacement(layout, { uid: 'n', catalogId: 'sofa', x: 4, z: 8, rot: 1 })).toMatchObject({ ok: true });
-    expect(validatePlacement(layout, { uid: 'n', catalogId: 'bookshelf', x: 4, z: 6, rot: 0 }).ok).toBe(true);
-    const across = validatePlacement(layout, { uid: 'n', catalogId: 'bookshelf', x: 10, z: 10, rot: 0 });
+    expect(
+      validatePlacement(layout, { uid: 'n', catalogId: 'sofa', x: 4, z: 8, rot: 1 }),
+    ).toMatchObject({ ok: true });
+    expect(
+      validatePlacement(layout, { uid: 'n', catalogId: 'bookshelf', x: 4, z: 6, rot: 0 }).ok,
+    ).toBe(true);
+    const across = validatePlacement(layout, {
+      uid: 'n',
+      catalogId: 'bookshelf',
+      x: 10,
+      z: 10,
+      rot: 0,
+    });
     expect(across).toMatchObject({ ok: false });
   });
 });
@@ -96,8 +119,15 @@ describe('room creation & resizing', () => {
   });
   it('creates a new room by painting tiles', () => {
     const layout = createDefaultLayout();
-    const next = { ...layout, rooms: [...layout.rooms, { id: 'r-x', name: 'Server Room', type: 'server' as const }] };
-    next.tiles = next.tiles.map((t, i) => (i % 16 >= 5 && i % 16 <= 6 && Math.floor(i / 16) >= 1 && Math.floor(i / 16) <= 2 ? { ...t, roomId: 'r-x' } : t));
+    const next = {
+      ...layout,
+      rooms: [...layout.rooms, { id: 'r-x', name: 'Server Room', type: 'server' as const }],
+    };
+    next.tiles = next.tiles.map((t, i) =>
+      i % 16 >= 5 && i % 16 <= 6 && Math.floor(i / 16) >= 1 && Math.floor(i / 16) <= 2
+        ? { ...t, roomId: 'r-x' }
+        : t,
+    );
     expect(checkEssentialRoutes(next).ok).toBe(true);
   });
 });
@@ -113,7 +143,9 @@ describe('pathfinding', () => {
       const b = path[i];
       expect(grid.cells[b.z * grid.width + b.x]).not.toBe(2);
       if (a.x !== b.x && a.z !== b.z) {
-        expect(wallBetween(grid, a.x, a.z, b.x, a.z) || wallBetween(grid, a.x, a.z, a.x, b.z)).toBe(false);
+        expect(wallBetween(grid, a.x, a.z, b.x, a.z) || wallBetween(grid, a.x, a.z, a.x, b.z)).toBe(
+          false,
+        );
       } else expect(wallBetween(grid, a.x, a.z, b.x, b.z)).toBe(false);
     }
     // Must pass through the chief office door edge (5,3)->(4,3).
@@ -121,13 +153,24 @@ describe('pathfinding', () => {
   });
   it('returns null for unreachable or blocked goals', () => {
     expect(findPath(grid, { x: 7, z: 11 }, { x: 1, z: 1 })).toBeNull();
-    const sealed: OfficeLayout = { ...layout, walls: layout.walls.map((w) => (w.kind === 'door' && w.x === 5 ? { ...w, kind: 'glass' } : w)) };
+    const sealed: OfficeLayout = {
+      ...layout,
+      walls: layout.walls.map((w) =>
+        w.kind === 'door' && w.x === 5 ? { ...w, kind: 'glass' } : w,
+      ),
+    };
     expect(findPath(buildNavGrid(sealed), { x: 7, z: 11 }, { x: 2, z: 0 })).toBeNull();
     expect(checkEssentialRoutes(sealed).ok).toBe(false);
   });
   it('re-routes after furniture moves', () => {
     const before = findPath(grid, { x: 7, z: 10 }, { x: 7, z: 6 })!;
-    const moved = { ...layout, furniture: [...layout.furniture, { uid: 'x', catalogId: 'bookshelf', x: 6, z: 6, rot: 0 as const }] };
+    const moved = {
+      ...layout,
+      furniture: [
+        ...layout.furniture,
+        { uid: 'x', catalogId: 'bookshelf', x: 6, z: 6, rot: 0 as const },
+      ],
+    };
     const after = findPath(buildNavGrid(moved), { x: 7, z: 10 }, { x: 7, z: 5 })!;
     expect(before.length).toBeGreaterThan(0);
     expect(after.some((t) => t.x === 7 && t.z === 6)).toBe(false);

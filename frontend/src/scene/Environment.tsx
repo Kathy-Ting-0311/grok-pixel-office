@@ -88,7 +88,10 @@ export function Environment() {
   const ambient = useRef<THREE.AmbientLight>(null);
   // Created once; the season colour is updated in place below.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const groundMat = useMemo(() => new THREE.MeshLambertMaterial({ color: palettes[season].grass }), []);
+  const groundMat = useMemo(
+    () => new THREE.MeshLambertMaterial({ color: palettes[season].grass }),
+    [],
+  );
   const sky = useMemo(() => new THREE.Color(palettes[season].sky), []); // eslint-disable-line react-hooks/exhaustive-deps
   const sunColor = useMemo(() => new THREE.Color(palettes[season].sun), []); // eslint-disable-line react-hooks/exhaustive-deps
   const canopyScale = useRef(palettes[season].canopy);

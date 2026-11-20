@@ -175,25 +175,21 @@ export const api = {
       throw new Error(
         'The local backend is not running (browser fallback simulation is always on).',
       );
-    useStore
-      .getState()
-      .setSources(
-        await json('/api/sources/simulation', {
-          method: 'POST',
-          body: JSON.stringify({ enabled }),
-        }),
-      );
+    useStore.getState().setSources(
+      await json('/api/sources/simulation', {
+        method: 'POST',
+        body: JSON.stringify({ enabled }),
+      }),
+    );
   },
   async setLocalCache(dir: string | null, authorize: boolean) {
     if (!backendUp) throw new Error('Local cache access requires the local backend (npm run dev).');
-    useStore
-      .getState()
-      .setSources(
-        await json('/api/sources/local', {
-          method: 'POST',
-          body: JSON.stringify({ dir, authorize }),
-        }),
-      );
+    useStore.getState().setSources(
+      await json('/api/sources/local', {
+        method: 'POST',
+        body: JSON.stringify({ dir, authorize }),
+      }),
+    );
   },
   async simulateMeeting(participants?: string[], title?: string) {
     if (backendUp)
@@ -219,4 +215,208 @@ export const api = {
       return t >= from && t <= to;
     });
   },
+};
+
+// ---- Placed tasks (local server only; the xAI key never leaves the server) ----
+export type PlacedTask = {
+  id: number;
+  title: string;
+  details: string;
+  agent: string;
+  requestedAgent: string;
+  priority: 'low' | 'normal' | 'high';
+  maxCostUsd: number;
+  status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+  attempt: number;
+  mock: boolean;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  summary?: string;
+  error?: string;
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number;
+  model?: string;
+};
+export type TaskBoard = {
+  tasks: PlacedTask[];
+  budget: { spentUsd: number; dailyBudgetUsd: number; remainingUsd: number; exhausted: boolean };
+  config: {
+    mock: boolean;
+    model: string;
+    maxTokensPerTask: number;
+    estimateMaxCostUsd: number;
+    tokenRequired: boolean;
+  };
+};
+export class TaskApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly field?: string,
+  ) {
+    super(message);
+  }
+}
+const officeToken = () => loadLocal<string>('office-token') ?? '';
+async function taskCall<T>(url: string, body?: unknown): Promise<T> {
+  const r = await fetch(url, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-office-token': officeToken() },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = (await r.json().catch(() => ({}))) as { error?: string; field?: string };
+  if (!r.ok)
+    throw new TaskApiError(data.error ?? `Request failed (HTTP ${r.status})`, r.status, data.field);
+  return data as T;
+}
+export const tasksApi = {
+  board: () => taskCall<TaskBoard>('/api/tasks'),
+  create: (t: { title: string; details?: string; agent: string; priority: string }) =>
+    taskCall<PlacedTask>('/api/tasks', t),
+  cancel: (id: number) => taskCall<PlacedTask>(`/api/tasks/${id}/cancel`, {}),
+  retry: (id: number) => taskCall<PlacedTask>(`/api/tasks/${id}/retry`, {}),
+  setToken: (token: string) => saveLocal('office-token', token),
+};
+
+// ---- Direct chat with one Bot (local server only) ----
+export type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant' | 'note';
+  text: string;
+  ts: string;
+  mock: boolean;
+  taskId?: number;
+  tokensIn?: number;
+  tokensOut?: number;
+  costUsd?: number;
+};
+export type ChatInfo = {
+  messages: ChatMessage[];
+  busy: boolean;
+  mock: boolean;
+  budget: TaskBoard['budget'];
+};
+type ChatEvent =
+  | { event: 'delta'; data: { text: string } }
+  | { event: 'thinking'; data: object }
+  | { event: 'task'; data: { task: PlacedTask; message: ChatMessage } }
+  | { event: 'done'; data: { message: ChatMessage } }
+  | { event: 'error'; data: { error: string } };
+export const chatApi = {
+  history: (botId: string) => taskCall<ChatInfo>(`/api/chat/${botId}`),
+  async clear(botId: string) {
+    const r = await fetch(`/api/chat/${botId}`, {
+      method: 'DELETE',
+      headers: { 'x-office-token': officeToken() },
+    });
+    if (!r.ok)
+      throw new TaskApiError(
+        ((await r.json().catch(() => ({}))) as { error?: string }).error ??
+          'Could not clear the chat.',
+        r.status,
+      );
+  },
+  /** Sends a message and calls onEvent for each streamed event. Resolves when the reply ends. */
+  async send(botId: string, text: string, onEvent: (e: ChatEvent) => void, signal: AbortSignal) {
+    const r = await fetch(`/api/chat/${botId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-office-token': officeToken() },
+      body: JSON.stringify({ text }),
+      signal,
+    });
+    if (!r.ok || !r.body) {
+      const data = (await r.json().catch(() => ({}))) as { error?: string };
+      throw new TaskApiError(data.error ?? `Request failed (HTTP ${r.status})`, r.status);
+    }
+    const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const block = buf.slice(0, i);
+        buf = buf.slice(i + 2);
+        const event = /^event: (.+)$/m.exec(block)?.[1];
+        const data = /^data: (.+)$/m.exec(block)?.[1];
+        if (event && data) onEvent({ event, data: JSON.parse(data) } as ChatEvent);
+      }
+    }
+  },
+};
+
+// ---- Results board (saved outputs of finished tasks) ----
+export type OutputType = 'text' | 'markdown' | 'code' | 'image' | 'file';
+export type ResultStatus = 'done' | 'failed' | 'cancelled';
+export type ResultEntry = {
+  id: number;
+  title: string;
+  agent: string;
+  time: string;
+  status: ResultStatus;
+  type: OutputType;
+  cost: number;
+  pinned: boolean;
+  read: boolean;
+};
+export type ResultRecord = {
+  task_id: number;
+  title: string;
+  details: string;
+  agent: string;
+  created_at: string;
+  finished_at: string;
+  status: ResultStatus;
+  output_type: OutputType;
+  output: string;
+  language?: string;
+  summary?: string;
+  error?: string;
+  files: { name: string; size: number; type: string }[];
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  model: string;
+  mock: boolean;
+};
+async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const r = await fetch(url, {
+    method,
+    headers: {
+      ...(body !== undefined && { 'Content-Type': 'application/json' }),
+      'x-office-token': officeToken(),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = (await r.json().catch(() => ({}))) as { error?: string };
+  if (!r.ok) throw new TaskApiError(data.error ?? `Request failed (HTTP ${r.status})`, r.status);
+  return data as T;
+}
+/** Links for <img>/downloads cannot send headers, so the optional token goes in the query. */
+const withToken = (url: string) => {
+  const t = officeToken();
+  return t ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(t)}` : url;
+};
+export const resultsApi = {
+  list: () => call<{ keep: number; results: ResultEntry[] }>('GET', '/api/results'),
+  get: (id: number) => call<ResultRecord>('GET', `/api/results/${id}`),
+  patch: (id: number, p: { pinned?: boolean; read?: boolean }) =>
+    call<ResultEntry>('PATCH', `/api/results/${id}`, p),
+  remove: (id: number) => call<{ ok: true }>('DELETE', `/api/results/${id}`),
+  rerun: (id: number) => call<PlacedTask>('POST', `/api/results/${id}/rerun`),
+  setKeep: (keep: number) => call<{ keep: number }>('PUT', '/api/results/settings', { keep }),
+  fileUrl: (id: number, name: string, download = false) =>
+    withToken(
+      `/api/results/${id}/files/${encodeURIComponent(name)}${download ? '?download=1' : ''}`,
+    ),
+  downloadUrl: (id: number) => withToken(`/api/results/${id}/download`),
+  exportUrl: (kind: 'md' | 'zip') => withToken(`/api/results/export.${kind}`),
+  /** "/task ..." or Make-it-a-task from the chat box. */
+  chatTask: (botId: string, text: string) =>
+    call<{ task: PlacedTask; messages: ChatMessage[] }>('POST', `/api/chat/${botId}/task`, {
+      text,
+    }),
 };

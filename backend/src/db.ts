@@ -29,8 +29,18 @@ export function openStore(path: string) {
     'INSERT OR IGNORE INTO events (id, bot_id, task_id, ts, ts_ms, type, source, payload, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
   );
   const getKv = db.prepare('SELECT value FROM kv WHERE key = ?');
-  const putKv = db.prepare('INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at');
-  type Row = { id: string; bot_id: string; task_id: string | null; ts: string; type: string; source: string; payload: string };
+  const putKv = db.prepare(
+    'INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at',
+  );
+  type Row = {
+    id: string;
+    bot_id: string;
+    task_id: string | null;
+    ts: string;
+    type: string;
+    source: string;
+    payload: string;
+  };
   const toEvent = (r: Row): BotEvent => ({
     id: r.id,
     botId: r.bot_id,
@@ -44,20 +54,42 @@ export function openStore(path: string) {
   return {
     /** Insert; returns true when the event was new (duplicate ids are ignored). */
     addEvent(e: BotEvent) {
-      const res = insert.run(e.id, e.botId, e.taskId ?? null, e.timestamp, Date.parse(e.timestamp), e.type, e.source, JSON.stringify(e.payload ?? {}), Date.now());
+      const res = insert.run(
+        e.id,
+        e.botId,
+        e.taskId ?? null,
+        e.timestamp,
+        Date.parse(e.timestamp),
+        e.type,
+        e.source,
+        JSON.stringify(e.payload ?? {}),
+        Date.now(),
+      );
       return res.changes > 0;
     },
     recent(limit = 500, source?: EventSource): BotEvent[] {
-      const rows = (source
-        ? db.prepare('SELECT * FROM events WHERE source = ? ORDER BY ts_ms DESC, id DESC LIMIT ?').all(source, limit)
-        : db.prepare('SELECT * FROM events ORDER BY ts_ms DESC, id DESC LIMIT ?').all(limit)) as Row[];
+      const rows = (
+        source
+          ? db
+              .prepare('SELECT * FROM events WHERE source = ? ORDER BY ts_ms DESC, id DESC LIMIT ?')
+              .all(source, limit)
+          : db.prepare('SELECT * FROM events ORDER BY ts_ms DESC, id DESC LIMIT ?').all(limit)
+      ) as Row[];
       return rows.map(toEvent).reverse();
     },
     range(fromMs: number, toMs: number, limit = 20000): BotEvent[] {
-      return (db.prepare('SELECT * FROM events WHERE ts_ms >= ? AND ts_ms <= ? ORDER BY ts_ms ASC, id ASC LIMIT ?').all(fromMs, toMs, limit) as Row[]).map(toEvent);
+      return (
+        db
+          .prepare(
+            'SELECT * FROM events WHERE ts_ms >= ? AND ts_ms <= ? ORDER BY ts_ms ASC, id ASC LIMIT ?',
+          )
+          .all(fromMs, toMs, limit) as Row[]
+      ).map(toEvent);
     },
     timestamps(limit = 100000) {
-      return db.prepare('SELECT id, ts, source, ts_ms FROM events ORDER BY ts_ms ASC LIMIT ?').all(limit) as { id: string; ts: string; source: EventSource; ts_ms: number }[];
+      return db
+        .prepare('SELECT id, ts, source, ts_ms FROM events ORDER BY ts_ms ASC LIMIT ?')
+        .all(limit) as { id: string; ts: string; source: EventSource; ts_ms: number }[];
     },
     count() {
       return (db.prepare('SELECT COUNT(*) AS n FROM events').get() as { n: number }).n;
@@ -65,7 +97,10 @@ export function openStore(path: string) {
     /** Keep the store bounded: drop the oldest simulated events beyond `max`. */
     prune(max = 100000) {
       const n = this.count();
-      if (n > max) db.prepare("DELETE FROM events WHERE id IN (SELECT id FROM events WHERE source = 'simulated' ORDER BY ts_ms ASC LIMIT ?)").run(n - max);
+      if (n > max)
+        db.prepare(
+          "DELETE FROM events WHERE id IN (SELECT id FROM events WHERE source = 'simulated' ORDER BY ts_ms ASC LIMIT ?)",
+        ).run(n - max);
     },
     getState<T>(key: string): T | undefined {
       const row = getKv.get(key) as { value: string } | undefined;

@@ -149,28 +149,24 @@ export function ReplayPicker() {
   const open = async (s: ReplaySession) => {
     const events = await api.range(Date.parse(s.start), Date.parse(s.end));
     if (!events.length) return useStore.getState().toast('That session has no events.', 'warn');
-    useStore
-      .getState()
-      .startReplay({
-        label: `Session ${fmtDateTime(s.start)}`,
-        events,
-        start: Date.parse(events[0].timestamp),
-        end: Date.parse(events.at(-1)!.timestamp),
-        demo: false,
-      });
+    useStore.getState().startReplay({
+      label: `Session ${fmtDateTime(s.start)}`,
+      events,
+      start: Date.parse(events[0].timestamp),
+      end: Date.parse(events.at(-1)!.timestamp),
+      demo: false,
+    });
   };
   const demo = () => {
     const start = Date.now() - 20 * 60000;
     const events = SimulationProvider.demoHistory(roster, start, 20 * 60000, Date.now() & 0xff);
-    useStore
-      .getState()
-      .startReplay({
-        label: 'Simulated replay demo (20 min)',
-        events,
-        start,
-        end: Date.parse(events.at(-1)!.timestamp),
-        demo: true,
-      });
+    useStore.getState().startReplay({
+      label: 'Simulated replay demo (20 min)',
+      events,
+      start,
+      end: Date.parse(events.at(-1)!.timestamp),
+      demo: true,
+    });
   };
   return (
     <Modal title="Historical replay">
@@ -582,6 +578,26 @@ export function SettingsModal() {
             </label>
             <p className="text-[10px] text-stone-500">
               Decorative only — no live weather source is used.
+            </p>
+          </Section>
+          <Section title="Finished tasks">
+            <label className="block text-xs">
+              Pop-up on completion
+              <select
+                className="field mt-0.5 block w-full min-w-0"
+                value={settings.popupOnCompletion}
+                onChange={(e) =>
+                  patch({ popupOnCompletion: e.target.value as typeof settings.popupOnCompletion })
+                }
+                data-testid="popup-setting"
+              >
+                <option value="always">Always</option>
+                <option value="focused">Only when I am in the app</option>
+                <option value="off">Off (show a toast with an Open button)</option>
+              </select>
+            </label>
+            <p className="text-[10px] text-stone-500">
+              A soft sound also plays when sound is enabled. All results stay in the Results board.
             </p>
           </Section>
           <Section title="Audio">

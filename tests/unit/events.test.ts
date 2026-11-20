@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { applyEvent, classifySource, compareEvents, Deduper, emptyTaskState, reduceEvents, taskStats, activeTaskFor, filterTasks, botEventSchema } from '../../shared/events';
+import {
+  applyEvent,
+  classifySource,
+  compareEvents,
+  Deduper,
+  emptyTaskState,
+  reduceEvents,
+  taskStats,
+  activeTaskFor,
+  filterTasks,
+  botEventSchema,
+} from '../../shared/events';
 import { ReplayEngine, asReplayed, findGaps, splitSessions } from '../../shared/replay';
 import { SimulationProvider } from '../../shared/simProvider';
 import { roster } from '../../shared/roster';
@@ -7,7 +18,12 @@ import { layoutBubbles } from '../../shared/bubbles';
 import { applyGameEvent, emptyProgression } from '../../shared/progression';
 import type { BotEvent } from '../../shared/types';
 
-const ev = (id: string, type: BotEvent['type'], t: number, extra: Partial<BotEvent> = {}): BotEvent => ({
+const ev = (
+  id: string,
+  type: BotEvent['type'],
+  t: number,
+  extra: Partial<BotEvent> = {},
+): BotEvent => ({
   id,
   botId: 'b1',
   taskId: 't1',
@@ -31,16 +47,28 @@ describe('task state transitions', () => {
     expect(s.tasks.t1).toMatchObject({ status: 'completed', progress: 1 });
   });
   it('keeps progress unknown (null) when the source never reports it', () => {
-    const s = reduceEvents([ev('1', 'task_started', 1), ev('2', 'task_updated', 2), ev('3', 'task_completed', 3)]);
+    const s = reduceEvents([
+      ev('1', 'task_started', 1),
+      ev('2', 'task_updated', 2),
+      ev('3', 'task_completed', 3),
+    ]);
     expect(s.tasks.t1.progress).toBeNull();
   });
   it('does not reopen a finished task and ignores updates for unknown tasks', () => {
-    const s = reduceEvents([ev('1', 'task_started', 1), ev('2', 'task_failed', 2), ev('3', 'task_started', 3), ev('4', 'task_updated', 4, { taskId: 'zz' })]);
+    const s = reduceEvents([
+      ev('1', 'task_started', 1),
+      ev('2', 'task_failed', 2),
+      ev('3', 'task_started', 3),
+      ev('4', 'task_updated', 4, { taskId: 'zz' }),
+    ]);
     expect(s.tasks.t1.status).toBe('failed');
     expect(s.tasks.zz).toBeUndefined();
   });
   it('picks the most recent active task for a bot', () => {
-    const s = reduceEvents([ev('1', 'task_started', 1), ev('2', 'task_started', 5, { taskId: 't2' })]);
+    const s = reduceEvents([
+      ev('1', 'task_started', 1),
+      ev('2', 'task_started', 5, { taskId: 't2' }),
+    ]);
     expect(activeTaskFor(s, 'b1')?.id).toBe('t2');
   });
 });
@@ -54,9 +82,19 @@ describe('statistics', () => {
       ev('4', 'task_created', 1, { taskId: 'd' }),
     ]);
     const st = taskStats(Object.values(s.tasks));
-    expect(st).toMatchObject({ total: 4, completed: 1, failed: 1, active: 1, pending: 1, eligible: 4, completionRate: 25 });
+    expect(st).toMatchObject({
+      total: 4,
+      completed: 1,
+      failed: 1,
+      active: 1,
+      pending: 1,
+      eligible: 4,
+      completionRate: 25,
+    });
     expect(taskStats([]).completionRate).toBeNull();
-    expect(filterTasks(Object.values(s.tasks), { status: 'failed' }).map((t) => t.id)).toEqual(['b']);
+    expect(filterTasks(Object.values(s.tasks), { status: 'failed' }).map((t) => t.id)).toEqual([
+      'b',
+    ]);
   });
 });
 
@@ -79,12 +117,18 @@ describe('deduplication & classification', () => {
   });
   it('validates event shape', () => {
     expect(botEventSchema.safeParse(ev('1', 'task_started', 1)).success).toBe(true);
-    expect(botEventSchema.safeParse({ ...ev('1', 'task_started', 1), timestamp: 'nope' }).success).toBe(false);
+    expect(
+      botEventSchema.safeParse({ ...ev('1', 'task_started', 1), timestamp: 'nope' }).success,
+    ).toBe(false);
   });
 });
 
 describe('replay', () => {
-  const events = [ev('b', 'task_started', 2000), ev('a', 'task_created', 1000), ev('c', 'task_completed', 400000)];
+  const events = [
+    ev('b', 'task_started', 2000),
+    ev('a', 'task_created', 1000),
+    ev('c', 'task_completed', 400000),
+  ];
   it('orders by timestamp then id and replays in order', () => {
     const r = new ReplayEngine(events);
     expect(r.events.map((e) => e.id)).toEqual(['a', 'b', 'c']);
@@ -116,7 +160,8 @@ describe('simulation provider', () => {
     const tasks = Object.values(s.tasks);
     expect(tasks.some((t) => t.status === 'completed')).toBe(true);
     // Each completion was preceded by a start of the same task.
-    for (const t of tasks.filter((t) => t.status === 'completed')) expect(t.startedAt).toBeDefined();
+    for (const t of tasks.filter((t) => t.status === 'completed'))
+      expect(t.startedAt).toBeDefined();
     expect(new Set(history.map((e) => e.id)).size).toBe(history.length);
     expect(history.some((e) => e.type === 'meeting_started')).toBe(true);
   });
@@ -131,11 +176,19 @@ describe('simulation provider', () => {
 describe('speech bubble layout', () => {
   const vp = { width: 800, height: 600 };
   it('does not overlap visible bubbles', () => {
-    const items = Array.from({ length: 6 }, (_, i) => ({ id: `b${i}`, x: 400 + i * 5, y: 300, width: 120, height: 30, priority: i }));
+    const items = Array.from({ length: 6 }, (_, i) => ({
+      id: `b${i}`,
+      x: 400 + i * 5,
+      y: 300,
+      width: 120,
+      height: 30,
+      priority: i,
+    }));
     const out = layoutBubbles(items, { maxVisible: 10, viewport: vp });
     const vis = out.filter((o) => o.visible);
     for (const a of vis)
-      for (const b of vis) if (a !== b) expect(Math.abs(a.y - b.y) >= 30 || Math.abs(a.x - b.x) >= 120).toBe(true);
+      for (const b of vis)
+        if (a !== b) expect(Math.abs(a.y - b.y) >= 30 || Math.abs(a.x - b.x) >= 120).toBe(true);
     expect(out.find((o) => o.id === 'b5')!.lift).toBe(0); // highest priority keeps its anchor
   });
   it('respects maxVisible, viewport and distance', () => {
@@ -155,6 +208,8 @@ describe('game layer separation', () => {
     const p = emptyProgression();
     expect(applyGameEvent(p, ev('1', 'task_completed', 1, { source: 'unknown' }))).toBe(p);
     expect(applyGameEvent(p, ev('1', 'task_completed', 1, { source: 'replayed' }))).toBe(p);
-    expect(applyGameEvent(p, ev('1', 'task_completed', 1, { source: 'simulated' })).coins).toBeGreaterThan(p.coins);
+    expect(
+      applyGameEvent(p, ev('1', 'task_completed', 1, { source: 'simulated' })).coins,
+    ).toBeGreaterThan(p.coins);
   });
 });

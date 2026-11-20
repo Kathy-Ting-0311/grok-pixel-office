@@ -30,7 +30,8 @@ export type LocalCacheStatus = {
   lastError?: string;
 };
 
-const SENSITIVE_NAME = /(credential|token|cookie|secret|password|passwd|session|auth|key|keychain|\.pem$)/i;
+const SENSITIVE_NAME =
+  /(credential|token|cookie|secret|password|passwd|session|auth|key|keychain|\.pem$)/i;
 const EVENT_FILE = /\.(jsonl|ndjson)$/i;
 const MAX_READ = 4 * 1024 * 1024;
 
@@ -38,10 +39,19 @@ const MAX_READ = 4 * 1024 * 1024;
 export function refusedDirectory(dir: string): string | undefined {
   const home = homedir();
   const p = resolve(dir);
-  const blocked = [join(home, '.ssh'), join(home, 'Library', 'Keychains'), join(home, 'Library', 'Cookies'), join(home, '.grokbot'), join(home, '.aws'), join(home, '.gnupg')];
-  for (const b of blocked) if (p === b || p.startsWith(b + '/'))
-    return `${b} holds credentials or private application state; it is not read. Export events to a separate folder instead.`;
-  if (p === '/' || p === home) return 'Choose a specific folder, not the whole disk or home directory.';
+  const blocked = [
+    join(home, '.ssh'),
+    join(home, 'Library', 'Keychains'),
+    join(home, 'Library', 'Cookies'),
+    join(home, '.grokbot'),
+    join(home, '.aws'),
+    join(home, '.gnupg'),
+  ];
+  for (const b of blocked)
+    if (p === b || p.startsWith(b + '/'))
+      return `${b} holds credentials or private application state; it is not read. Export events to a separate folder instead.`;
+  if (p === '/' || p === home)
+    return 'Choose a specific folder, not the whole disk or home directory.';
   return undefined;
 }
 
@@ -53,7 +63,14 @@ export class LocalCacheProvider {
   private debounce?: NodeJS.Timeout;
   private cursors = new Map<string, FileCursor>();
   private scanning = false;
-  status: LocalCacheStatus = { state: 'disabled', files: 0, accepted: 0, rejected: 0, unmatchedBots: 0, duplicates: 0 };
+  status: LocalCacheStatus = {
+    state: 'disabled',
+    files: 0,
+    accepted: 0,
+    rejected: 0,
+    unmatchedBots: 0,
+    duplicates: 0,
+  };
 
   constructor(
     private readonly knownBots: Set<string>,
@@ -68,7 +85,16 @@ export class LocalCacheProvider {
     if (refused) throw new Error(refused);
     const info = await stat(dir).catch(() => undefined);
     if (!info?.isDirectory()) throw new Error('That folder does not exist or is not a directory.');
-    this.status = { state: 'watching', dir, authorizedAt, files: 0, accepted: 0, rejected: 0, unmatchedBots: 0, duplicates: 0 };
+    this.status = {
+      state: 'watching',
+      dir,
+      authorizedAt,
+      files: 0,
+      accepted: 0,
+      rejected: 0,
+      unmatchedBots: 0,
+      duplicates: 0,
+    };
     this.cursors.clear();
     try {
       this.watcher = watch(dir, { persistent: false }, () => this.schedule());
@@ -87,7 +113,14 @@ export class LocalCacheProvider {
     if (this.timer) clearInterval(this.timer);
     if (this.debounce) clearTimeout(this.debounce);
     this.timer = undefined;
-    this.status = { state: 'disabled', files: 0, accepted: 0, rejected: 0, unmatchedBots: 0, duplicates: 0 };
+    this.status = {
+      state: 'disabled',
+      files: 0,
+      accepted: 0,
+      rejected: 0,
+      unmatchedBots: 0,
+      duplicates: 0,
+    };
   }
 
   private schedule() {
@@ -104,7 +137,9 @@ export class LocalCacheProvider {
     if (!dir || this.scanning) return;
     this.scanning = true;
     try {
-      const names = (await readdir(dir)).filter((n) => EVENT_FILE.test(n) && !SENSITIVE_NAME.test(n));
+      const names = (await readdir(dir)).filter(
+        (n) => EVENT_FILE.test(n) && !SENSITIVE_NAME.test(n),
+      );
       this.status.files = names.length;
       for (const name of names) await this.readFile(join(dir, name));
       this.status.lastScanAt = new Date().toISOString();
@@ -122,7 +157,8 @@ export class LocalCacheProvider {
     if (!l.isFile()) return; // skip symlinks, sockets, directories
     let cur = this.cursors.get(path);
     // Rotation / truncation: new inode or shrunk file → start from the beginning (dedupe protects us).
-    if (!cur || cur.ino !== l.ino || l.size < cur.offset) cur = { ino: l.ino, offset: 0, partial: '' };
+    if (!cur || cur.ino !== l.ino || l.size < cur.offset)
+      cur = { ino: l.ino, offset: 0, partial: '' };
     if (l.size === cur.offset) {
       this.cursors.set(path, cur);
       return;
@@ -154,7 +190,10 @@ export class LocalCacheProvider {
       this.status.rejected++;
       return;
     }
-    const id = typeof raw.id === 'string' && raw.id ? raw.id : `local-${createHash('sha1').update(`${path}\n${trimmed}`).digest('hex').slice(0, 20)}`;
+    const id =
+      typeof raw.id === 'string' && raw.id
+        ? raw.id
+        : `local-${createHash('sha1').update(`${path}\n${trimmed}`).digest('hex').slice(0, 20)}`;
     void offset;
     void i;
     const candidate = {
@@ -174,7 +213,8 @@ export class LocalCacheProvider {
     }
     if (this.emit(parsed.data as BotEvent)) {
       this.status.accepted++;
-      if (!this.status.lastEventAt || this.status.lastEventAt < parsed.data.timestamp) this.status.lastEventAt = parsed.data.timestamp;
+      if (!this.status.lastEventAt || this.status.lastEventAt < parsed.data.timestamp)
+        this.status.lastEventAt = parsed.data.timestamp;
     } else this.status.duplicates++;
   }
 }

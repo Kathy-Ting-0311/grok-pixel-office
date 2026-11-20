@@ -18,6 +18,7 @@ import {
   ZoomIn,
   ZoomOut,
   CircleHelp,
+  Inbox,
 } from 'lucide-react';
 import { taskStats } from '../../../shared/events';
 import { levelFor, xpForLevel } from '../../../shared/progression';
@@ -29,6 +30,7 @@ import { cameraApi } from '../scene/CameraRig';
 import { resolveSeason, dayPhase } from '../scene/Environment';
 import { stateIcon, stateLabel } from '../scene/Overlay';
 import { ago } from './common';
+import { useResults } from './results';
 
 const seasonIcon = { spring: '🌸', summer: '☀️', autumn: '🍂', winter: '❄️' };
 
@@ -327,6 +329,28 @@ export function LeftSidebar() {
   );
 }
 
+function ResultsButton() {
+  const unread = useResults((r) => r.entries.filter((e) => !e.read).length);
+  return (
+    <button
+      className="btn relative"
+      onClick={() => useResults.getState().openBoard()}
+      data-testid="open-results"
+      title="Results board: outputs of finished tasks"
+    >
+      <Inbox size={14} /> <span className="max-sm:sr-only">Results</span>
+      {unread > 0 && (
+        <span
+          className="absolute -right-1 -top-1 min-w-4 rounded-full bg-sky-500 px-1 text-[9px] font-bold leading-4 text-white"
+          data-testid="results-unread"
+        >
+          {unread}
+        </span>
+      )}
+    </button>
+  );
+}
+
 export function BottomToolbar() {
   const mode = useStore((s) => s.mode);
   const audioSettings = useStore((s) => s.settings.audio);
@@ -376,6 +400,7 @@ export function BottomToolbar() {
       >
         <History size={14} /> <span className="max-sm:sr-only">Replay</span>
       </button>
+      <ResultsButton />
       <button className="btn" onClick={() => s().openModal('achievements')}>
         <Trophy size={14} /> <span className="max-sm:sr-only">Goals</span>
       </button>

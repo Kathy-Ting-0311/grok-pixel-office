@@ -86,6 +86,15 @@ function react(events: BotEvent[]) {
     if (!brain) continue;
     if (e.type === 'task_completed') brain.notify('completed');
     if (e.type === 'task_failed') brain.notify('failed');
+    // A placed task's model turn: show the existing THINKING pose at the desk for a moment.
+    if (
+      e.type === 'status_changed' &&
+      e.payload.status === 'thinking' &&
+      brain.state === 'WORKING'
+    ) {
+      brain.state = 'THINKING';
+      brain.thinkTimer = 3;
+    }
   }
 }
 

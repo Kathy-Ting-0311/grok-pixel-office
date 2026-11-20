@@ -1,5 +1,18 @@
-import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Crosshair, Move, RotateCw, Shirt, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Coffee,
+  Crosshair,
+  Eraser,
+  MoreHorizontal,
+  Move,
+  RotateCw,
+  Shirt,
+  Trash2,
+  Video,
+} from 'lucide-react';
 import { getCatalog } from '../../../shared/catalog';
 import { activeTaskFor, durationMs } from '../../../shared/events';
 import {
@@ -16,6 +29,8 @@ import { world } from '../systems/world';
 import { stateIcon, stateLabel } from '../scene/Overlay';
 import { floorLabel, floorTypes } from '../scene/textures';
 import { fmtDuration, fmtTime, Progress, Section, SourceBadge, StatusChip } from './common';
+import { TaskForm, TaskThreads } from './TaskComposer';
+import { BotChat } from './BotChat';
 
 export const roomTypes: RoomType[] = [
   'work',
@@ -47,7 +62,24 @@ function BotPanel({ id }: { id: string }) {
   const progression = useStore((s) => s.progression);
   const follow = useStore((s) => s.follow);
   const mode = useStore((s) => s.mode);
-  const [tab, setTab] = useState<'profile' | 'tasks' | 'chat'>('profile');
+  // Chat is the default view; Profile / Tasks / Activity live in the "..." menu.
+  const [tab, setTab] = useState<'profile' | 'talk' | 'tasks' | 'chat'>('talk');
+  const [menu, setMenu] = useState(false);
+  const [clearAsk, setClearAsk] = useState(false);
+  const [chatCount, setChatCount] = useState(0);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: PointerEvent) =>
+      !menuRef.current?.contains(e.target as Node) && setMenu(false);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setMenu(false);
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', esc);
+    };
+  }, [menu]);
   useEffect(() => {
     const open = (e: Event) => (e as CustomEvent).detail === id && setTab('chat');
     window.addEventListener('open-conversation', open);
@@ -59,7 +91,8 @@ function BotPanel({ id }: { id: string }) {
     .filter((t) => t.botId === id)
     .sort((a, b) => b.lastUpdated.localeCompare(a.lastUpdated));
   const lines = (mode === 'replay' ? [] : conversations)
-    .filter((c) => c.botId === id)
+    // Placed-task messages are shown inside their task thread below.
+    .filter((c) => c.botId === id && !c.taskId?.startsWith('placed-'))
     .slice(-60)
     .reverse();
   const desks = layout.furniture.filter((f) => itemPoints(f).some((p) => p.kind === 'desk'));
@@ -104,170 +137,262 @@ function BotPanel({ id }: { id: string }) {
     brain.timer = 12;
   };
 
+  const iconBtn = 'rounded p-1 text-ink hover:bg-paper disabled:opacity-40';
+  const views = [
+    ['talk', 'Chat'],
+    ['profile', 'Profile'],
+    ['tasks', 'Tasks'],
+    ['chat', 'Activity'],
+  ] as const;
+  const viewName = views.find(([v]) => v === tab)![1];
   return (
-    <div data-testid="bot-panel">
-      <div className="mb-2 flex items-center gap-2">
+    <div className="flex h-full min-h-0 flex-col" data-testid="bot-panel">
+      <div className="flex h-9 shrink-0 items-center gap-1.5 pl-3 pr-1.5">
+        {tab !== 'talk' && (
+          <button
+            className={iconBtn}
+            onClick={() => setTab('talk')}
+            aria-label="Back to chat"
+            data-testid="back-to-chat"
+          >
+            <ArrowLeft size={14} />
+          </button>
+        )}
         <span
-          className="h-10 w-10 rounded-md border-2 border-ink"
+          className="h-2.5 w-2.5 shrink-0 rounded-full border border-ink"
           style={{ background: bot.color }}
         />
-        <div className="min-w-0">
-          <div className="truncate text-sm font-extrabold">{bot.name}</div>
-          <div className="truncate text-[11px] text-stone-600">{bot.role}</div>
+        <div className="min-w-0 flex-1 leading-none">
+          <div className="truncate text-xs font-extrabold">
+            {bot.name}
+            {tab !== 'talk' && (
+              <span className="ml-1 font-normal text-stone-500">· {viewName}</span>
+            )}
+          </div>
+          <div className="truncate text-[10px] text-stone-500">{bot.role}</div>
         </div>
-      </div>
-      <div className="mb-2 flex flex-wrap gap-1">
-        <button className="btn" onClick={() => s().focus({ kind: 'bot', id })}>
-          <Crosshair size={12} /> Focus
+        <button
+          className={iconBtn}
+          onClick={() => s().focus({ kind: 'bot', id })}
+          title="Focus"
+          aria-label="Focus camera on this Bot"
+        >
+          <Crosshair size={14} />
         </button>
         <button
-          className={`btn ${follow === id ? 'btn-active' : ''}`}
+          className={`${iconBtn} ${follow === id ? 'bg-amber-200' : ''}`}
           onClick={() => s().setFollow(follow === id ? undefined : id)}
+          title="Follow"
+          aria-label="Follow this Bot"
+          aria-pressed={follow === id}
         >
-          Follow
-        </button>
-        <button className="btn" onClick={() => s().openModal('customize')}>
-          <Shirt size={12} /> Style
+          <Video size={14} />
         </button>
         <button
-          className="btn"
-          onClick={takeBreak}
-          disabled={!!task || mode !== 'live'}
-          title="Visual only — does not change any task"
+          className={iconBtn}
+          onClick={() => {
+            setTab('talk');
+            setClearAsk(true);
+          }}
+          disabled={!chatCount || mode === 'replay'}
+          title="Clear chat"
+          aria-label="Clear chat"
+          data-testid="chat-clear"
         >
-          ☕ Break
+          <Eraser size={14} />
+        </button>
+        <div className="relative" ref={menuRef}>
+          <button
+            className={`${iconBtn} ${menu ? 'bg-paper' : ''}`}
+            onClick={() => setMenu((v) => !v)}
+            aria-label="More"
+            aria-expanded={menu}
+            data-testid="bot-menu"
+          >
+            <MoreHorizontal size={14} />
+          </button>
+          {menu && (
+            <div className="panel absolute right-0 top-8 z-30 w-36 p-1 text-xs" role="menu">
+              {views.map(([v, label]) => (
+                <button
+                  key={v}
+                  role="menuitemradio"
+                  aria-checked={tab === v}
+                  className={`block w-full rounded px-2 py-1 text-left hover:bg-paper ${tab === v ? 'font-extrabold' : ''}`}
+                  onClick={() => {
+                    setTab(v);
+                    setMenu(false);
+                  }}
+                  data-testid={`tab-${v}`}
+                >
+                  {label}
+                </button>
+              ))}
+              <hr className="my-1 border-ink/15" />
+              <button
+                role="menuitem"
+                className="flex w-full items-center gap-1 rounded px-2 py-1 text-left hover:bg-paper"
+                onClick={() => {
+                  setMenu(false);
+                  s().openModal('customize');
+                }}
+              >
+                <Shirt size={12} /> Style
+              </button>
+              <button
+                role="menuitem"
+                className="flex w-full items-center gap-1 rounded px-2 py-1 text-left hover:bg-paper disabled:opacity-40"
+                onClick={() => {
+                  setMenu(false);
+                  takeBreak();
+                }}
+                disabled={!!task || mode !== 'live'}
+                title="Visual only — does not change any task"
+              >
+                <Coffee size={12} /> Break
+              </button>
+            </div>
+          )}
+        </div>
+        <button
+          className={iconBtn}
+          onClick={() => s().toggleRight()}
+          aria-label="Collapse details panel"
+        >
+          <ChevronRight size={14} />
         </button>
       </div>
-      <div className="mb-2 flex gap-1 border-b-2 border-ink/20">
-        {(['profile', 'tasks', 'chat'] as const).map((t) => (
-          <button
-            key={t}
-            className={`px-2 py-1 text-xs font-bold capitalize ${tab === t ? 'border-b-2 border-amber-500 text-ink' : 'text-stone-500'}`}
-            onClick={() => setTab(t)}
-          >
-            {t === 'chat' ? 'Conversation' : t}
-          </button>
-        ))}
-      </div>
-      {tab === 'profile' && (
-        <>
-          <Section title="Now">
-            <div className="rounded border border-ink/20 bg-white p-2 text-xs">
-              <div className="mb-1">
-                Visual: {stateIcon[brain?.state ?? 'IDLE']}{' '}
-                <b>{stateLabel[brain?.state ?? 'IDLE']}</b>
-                <span className="ml-1 text-[10px] text-stone-500">
-                  (animation — not task status)
-                </span>
-              </div>
-              {task ? (
-                <>
-                  <div className="mb-1 flex items-center gap-1">
-                    <StatusChip status={task.status} /> <SourceBadge source={task.source} />
+      {tab === 'talk' && (
+        <BotChat bot={bot} clearAsk={clearAsk} setClearAsk={setClearAsk} onCount={setChatCount} />
+      )}
+      {tab !== 'talk' && (
+        <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1">
+          {tab === 'profile' && (
+            <>
+              <Section title="Now">
+                <div className="rounded border border-ink/20 bg-white p-2 text-xs">
+                  <div className="mb-1">
+                    Visual: {stateIcon[brain?.state ?? 'IDLE']}{' '}
+                    <b>{stateLabel[brain?.state ?? 'IDLE']}</b>
+                    <span className="ml-1 text-[10px] text-stone-500">
+                      (animation — not task status)
+                    </span>
                   </div>
-                  <div className="font-bold">{task.title}</div>
-                  <div className="my-1">
-                    <Progress value={task.progress} />
-                  </div>
-                  <div className="text-[10px] text-stone-500">
-                    Started {fmtTime(task.startedAt)} · {fmtDuration(durationMs(task))} · updated{' '}
-                    {fmtTime(task.lastUpdated)}
-                  </div>
-                </>
-              ) : (
-                <div className="text-stone-500">No active task.</div>
+                  {task ? (
+                    <>
+                      <div className="mb-1 flex items-center gap-1">
+                        <StatusChip status={task.status} /> <SourceBadge source={task.source} />
+                      </div>
+                      <div className="font-bold">{task.title}</div>
+                      <div className="my-1">
+                        <Progress value={task.progress} />
+                      </div>
+                      <div className="text-[10px] text-stone-500">
+                        Started {fmtTime(task.startedAt)} · {fmtDuration(durationMs(task))} ·
+                        updated {fmtTime(task.lastUpdated)}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-stone-500">No active task.</div>
+                  )}
+                </div>
+              </Section>
+              <Section title="Profile">
+                <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs">
+                  <dt className="text-stone-500">ID</dt>
+                  <dd className="truncate font-pixel text-[10px]">{bot.id}</dd>
+                  <dt className="text-stone-500">Team</dt>
+                  <dd>{bot.team}</dd>
+                  <dt className="text-stone-500">Specialty</dt>
+                  <dd>{bot.specialty}</dd>
+                  <dt className="text-stone-500">About</dt>
+                  <dd>{bot.personalityText}</dd>
+                  <dt className="text-stone-500">Vibe</dt>
+                  <dd>
+                    {bot.trait}{' '}
+                    <span className="text-[10px] text-stone-500">(cosmetic idle style)</span>
+                  </dd>
+                  <dt className="text-stone-500">Office XP</dt>
+                  <dd>
+                    {progression.botXp[id] ?? 0} · Lv {levelFor(progression.botXp[id] ?? 0)}{' '}
+                    <span className="text-[10px] text-stone-500">(cosmetic)</span>
+                  </dd>
+                </dl>
+              </Section>
+              <Section title="Workstation">
+                <select
+                  className="field w-full"
+                  value={assigned ?? ''}
+                  onChange={(e) => assignDesk(e.target.value)}
+                  aria-label="Assigned desk"
+                >
+                  <option value="">— no desk —</option>
+                  {desks.map((d) => {
+                    const owner = Object.entries(layout.deskAssignments).find(
+                      ([, u]) => u === d.uid,
+                    )?.[0];
+                    const room = roomAt(layout, d.x, d.z);
+                    return (
+                      <option key={d.uid} value={d.uid}>
+                        {getCatalog(d.catalogId).name} · {room?.name ?? 'Unassigned'} ({d.x},{d.z})
+                        {owner && owner !== id ? ` — ${botById(owner)?.name}` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </Section>
+            </>
+          )}
+          {tab === 'tasks' && (
+            <ul className="space-y-1">
+              {tasks.length === 0 && (
+                <li className="text-xs text-stone-500">No tasks observed for {bot.name}.</li>
               )}
-            </div>
-          </Section>
-          <Section title="Profile">
-            <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs">
-              <dt className="text-stone-500">ID</dt>
-              <dd className="truncate font-pixel text-[10px]">{bot.id}</dd>
-              <dt className="text-stone-500">Team</dt>
-              <dd>{bot.team}</dd>
-              <dt className="text-stone-500">Specialty</dt>
-              <dd>{bot.specialty}</dd>
-              <dt className="text-stone-500">About</dt>
-              <dd>{bot.personalityText}</dd>
-              <dt className="text-stone-500">Vibe</dt>
-              <dd>
-                {bot.trait}{' '}
-                <span className="text-[10px] text-stone-500">(cosmetic idle style)</span>
-              </dd>
-              <dt className="text-stone-500">Office XP</dt>
-              <dd>
-                {progression.botXp[id] ?? 0} · Lv {levelFor(progression.botXp[id] ?? 0)}{' '}
-                <span className="text-[10px] text-stone-500">(cosmetic)</span>
-              </dd>
-            </dl>
-          </Section>
-          <Section title="Workstation">
-            <select
-              className="field w-full"
-              value={assigned ?? ''}
-              onChange={(e) => assignDesk(e.target.value)}
-              aria-label="Assigned desk"
-            >
-              <option value="">— no desk —</option>
-              {desks.map((d) => {
-                const owner = Object.entries(layout.deskAssignments).find(
-                  ([, u]) => u === d.uid,
-                )?.[0];
-                const room = roomAt(layout, d.x, d.z);
-                return (
-                  <option key={d.uid} value={d.uid}>
-                    {getCatalog(d.catalogId).name} · {room?.name ?? 'Unassigned'} ({d.x},{d.z})
-                    {owner && owner !== id ? ` — ${botById(owner)?.name}` : ''}
-                  </option>
-                );
-              })}
-            </select>
-          </Section>
-        </>
-      )}
-      {tab === 'tasks' && (
-        <ul className="space-y-1">
-          {tasks.length === 0 && (
-            <li className="text-xs text-stone-500">No tasks observed for {bot.name}.</li>
+              {tasks.slice(0, 40).map((t) => (
+                <li key={t.id} className="rounded border border-ink/15 bg-white p-1.5 text-xs">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="truncate font-bold">{t.title}</span>
+                    <StatusChip status={t.status} />
+                  </div>
+                  <div className="mt-0.5 flex items-center justify-between text-[10px] text-stone-500">
+                    <span>
+                      {fmtTime(t.startedAt ?? t.createdAt)} · {fmtDuration(durationMs(t))}
+                    </span>
+                    <SourceBadge source={t.source} />
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
-          {tasks.slice(0, 40).map((t) => (
-            <li key={t.id} className="rounded border border-ink/15 bg-white p-1.5 text-xs">
-              <div className="flex items-center justify-between gap-1">
-                <span className="truncate font-bold">{t.title}</span>
-                <StatusChip status={t.status} />
-              </div>
-              <div className="mt-0.5 flex items-center justify-between text-[10px] text-stone-500">
-                <span>
-                  {fmtTime(t.startedAt ?? t.createdAt)} · {fmtDuration(durationMs(t))}
-                </span>
-                <SourceBadge source={t.source} />
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      {tab === 'chat' && (
-        <ul className="space-y-1" data-testid="conversation">
-          {mode === 'replay' && (
-            <li className="text-xs text-stone-500">
-              Replay messages appear as bubbles in the office and in the replay event list.
-            </li>
+          {tab === 'chat' && (
+            <>
+              {mode !== 'replay' && <TaskThreads />}
+              <ul className="space-y-1" data-testid="conversation">
+                {mode === 'replay' && (
+                  <li className="text-xs text-stone-500">
+                    Replay messages appear as bubbles in the office and in the replay event list.
+                  </li>
+                )}
+                {lines.length === 0 && mode !== 'replay' && (
+                  <li className="text-xs text-stone-500">No conversation lines yet.</li>
+                )}
+                {lines.map((l) => (
+                  <li key={l.id} className="rounded border border-ink/15 bg-white p-1.5 text-xs">
+                    <div className="mb-0.5 flex items-center justify-between text-[10px] text-stone-500">
+                      <span>
+                        {fmtTime(l.timestamp)}{' '}
+                        {l.meetingId ? '· meeting' : l.taskId ? '· task' : ''}
+                      </span>
+                      <SourceBadge source={l.source} />
+                    </div>
+                    {l.text}
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
-          {lines.length === 0 && mode !== 'replay' && (
-            <li className="text-xs text-stone-500">No conversation lines yet.</li>
-          )}
-          {lines.map((l) => (
-            <li key={l.id} className="rounded border border-ink/15 bg-white p-1.5 text-xs">
-              <div className="mb-0.5 flex items-center justify-between text-[10px] text-stone-500">
-                <span>
-                  {fmtTime(l.timestamp)} {l.meetingId ? '· meeting' : l.taskId ? '· task' : ''}
-                </span>
-                <SourceBadge source={l.source} />
-              </div>
-              {l.text}
-            </li>
-          ))}
-        </ul>
+          {tab === 'chat' && mode !== 'replay' && <TaskForm />}
+        </div>
       )}
     </div>
   );
@@ -455,6 +580,15 @@ export function RightPanel() {
         <ChevronLeft size={14} />
       </button>
     );
+  if (selection?.kind === 'bot')
+    return (
+      <aside
+        className={`panel absolute left-2 right-2 z-20 flex flex-col overflow-hidden sm:bottom-16 sm:left-auto sm:top-16 sm:h-auto sm:w-80 ${mode === 'build' ? 'top-16 h-[36%]' : 'bottom-16 h-[52%]'}`}
+        data-testid="right-panel"
+      >
+        <BotPanel key={selection.id} id={selection.id} />
+      </aside>
+    );
   return (
     <aside
       className={`panel scroll-thin absolute left-2 right-2 z-20 overflow-y-auto p-3 sm:bottom-16 sm:left-auto sm:top-16 sm:max-h-none sm:w-72 ${mode === 'build' ? 'top-16 max-h-[36%]' : 'bottom-16 max-h-[48%]'}`}
@@ -462,13 +596,11 @@ export function RightPanel() {
     >
       <div className="mb-2 flex items-center justify-between">
         <h2 className="panel-title">
-          {selection?.kind === 'bot'
-            ? 'Bot'
-            : selection?.kind === 'furniture'
-              ? 'Furniture'
-              : selection?.kind === 'room'
-                ? 'Room'
-                : 'Details'}
+          {selection?.kind === 'furniture'
+            ? 'Furniture'
+            : selection?.kind === 'room'
+              ? 'Room'
+              : 'Details'}
         </h2>
         <button
           className="btn !px-1"
@@ -478,7 +610,6 @@ export function RightPanel() {
           <ChevronRight size={14} />
         </button>
       </div>
-      {selection?.kind === 'bot' && <BotPanel key={selection.id} id={selection.id} />}
       {selection?.kind === 'furniture' && <FurniturePanel uid={selection.uid} />}
       {selection?.kind === 'room' && <RoomPanel id={selection.id} />}
       {!selection && (
