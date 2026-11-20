@@ -1,0 +1,3 @@
+{"id":"example-1","botId":"mock-research-02","taskId":"example-task-1","timestamp":"2026-11-20T01:00:00Z","type":"task_started","source":"simulated","payload":{"title":"Example task from a local file","progress":0.1}}
+{"id":"example-2","botId":"mock-research-02","taskId":"example-task-1","timestamp":"2026-11-20T01:00:30Z","type":"message","source":"simulated","payload":{"text":"This line came from examples/local-cache."}}
+{"id":"example-3","botId":"mock-research-02","taskId":"example-task-1","timestamp":"2026-11-20T01:01:00Z","type":"task_completed","source":"simulated","payload":{}}
