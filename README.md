@@ -22,7 +22,7 @@ Open http://127.0.0.1:5173. Other ports:
 OFFICE_PORT=4329 OFFICE_FRONTEND_PORT=5183 npm run dev
 ```
 
-Production: `npm run build && npm start` → http://127.0.0.1:4319 (serves `dist/`).
+One command for the full app: `npm start` (builds, then serves everything on http://127.0.0.1:4319).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -34,6 +34,101 @@ Production: `npm run build && npm start` → http://127.0.0.1:4319 (serves `dist
 
 If the backend is not reachable, the browser runs the simulation itself and
 labels the feed **BROWSER SIMULATION**; it reconnects automatically.
+
+## Chat with a Bot (Grok API)
+
+Click a Bot, then open the **Chat** tab in the right panel. Each Bot has its own conversation:
+
+- Grok answers in that Bot's role, streaming word by word. **Stop** cancels a reply.
+- Ask for real work ("Oom, please draft a poster idea for the launch") and the Bot calls a
+  `place_task` tool: a **📋 Placed task #N** note appears and the task runs in the queue
+  (see it in the **Activity** tab).
+- Replies also show as speech bubbles in the office, labeled REAL (live) or SIMULATED (MOCK_MODE).
+- History is saved in `data/chats.json` (last 200 messages per Bot; the last 20 are sent to Grok).
+  **Clear** wipes one Bot's chat.
+- Chat spend counts against the same `DAILY_BUDGET_USD` as tasks. When it is used up, chat pauses.
+- API: `GET/DELETE /api/chat/:botId`, `POST /api/chat/:botId {text}` (server-sent events:
+  `thinking`, `delta`, `task`, `done`, `error`). Protected by `OFFICE_TOKEN` like `/api/tasks`.
+
+## Results: chat to task to result
+
+- **Chat panel.** Click a Bot. The right panel is one surface: a 36px header (Focus, Follow,
+  Clear, and a **…** menu for Profile / Tasks / Activity / Style / Break), the messages, and the
+  input pinned at the bottom. Enter sends, Shift+Enter adds a line.
+- **Make it a task.** Start a message with `/task`, or switch on the **Task** toggle. The first
+  line becomes the title and the rest the details, for the Bot you are chatting with. A live card
+  (`#14 Make a picture · running`) shows in the chat, with Cancel and Retry.
+- **Saved results.** Every finished or failed task is saved to `data/results/<task_id>.json`
+  (`task_id, title, agent, created_at, finished_at, status, output_type, output, files[],
+  tokens_in, tokens_out, cost_usd, model`) and listed in `data/results/index.json`. Files go to
+  `data/results/files/<task_id>/` and are served only by this local server, as downloads or
+  images, with `nosniff` and a sandbox CSP. All writes are atomic.
+- **Outputs.** Markdown and code are rendered (each code block has a Copy button) without ever
+  inserting HTML from the model. Image tasks save the image prompt and an SVG drawing. Set
+  `IMAGE_API=true` to also generate a real image with xAI's `POST /v1/images/generations`
+  (docs.x.ai/docs/guides/image-generations, about $0.04 per image, charged to the daily budget).
+- **Completion pop-up.** One window over the office with the output, Copy, Download, Open in Results
+  board and Close. Several results finishing together are paged (“1 of 3”). Esc or a click outside
+  closes it. Settings → *Pop-up on completion*: Always / Only when I am in the app / Off (a toast
+  with an Open button instead).
+- **Results board.** Use the **Results** toolbar button; the number on it is the unread count. The
+  board has a list on the left (newest first, virtualized), the detail view on the right, and
+  filters (search, agent, status, type, date range). It also offers Re-run, Delete (asks first),
+  Pin, and Export as `.md` or `.zip`. *Keep last N* sets retention, and pinned results are never
+  deleted. The board updates live from the existing event stream.
+- API: `GET /api/results`, `GET|PATCH|DELETE /api/results/:id`, `POST /api/results/:id/rerun`,
+  `GET /api/results/:id/files/:name`, `GET /api/results/:id/download`,
+  `GET /api/results/export.md|zip`, `PUT /api/results/settings {keep}`,
+  `POST /api/chat/:botId/task {text}`. These are protected by `OFFICE_TOKEN` like `/api/tasks`.
+
+## Place a task (Grok API)
+
+Select any Bot → **Conversation** tab. Task threads are listed at the top, and
+the form is pinned at the bottom. Fill in a title, optional details (▸), agent
+(**Auto** or one of the six) and priority, then **Send**. Enter sends;
+Shift+Enter adds a new line. Each task appears at once as a thread
+(`#3 Write report  queued → running → done`) with Cancel and Retry. The chosen
+Bot walks to its desk and works while Grok streams its reply into the thread
+and the office.
+
+**Setup**
+
+```sh
+cp .env.example .env   # already done once; .env is gitignored
+# edit .env: paste your key after XAI_API_KEY=, then set MOCK_MODE=false
+npm start
+```
+
+| `.env` field | Default | Meaning |
+| --- | --- | --- |
+| `XAI_API_KEY` | — | Your xAI key. Read only by the local server; never sent to the browser or logged. |
+| `XAI_BASE_URL` | `https://api.x.ai/v1` | OpenAI-compatible endpoint (`/chat/completions`). |
+| `DEFAULT_MODEL` | `grok-4.3` | Cheapest model with tool calling ($1.25 / $2.50 per 1M tokens in/out). |
+| `MAX_TOKENS_PER_TASK` | 20000 | Total tokens one task may use (all turns); also sets the cost shown under the form. |
+| `DAILY_BUDGET_USD` | 1 | No task starts, and Send is disabled, once today's (UTC) spend reaches this. |
+| `MOCK_MODE` | `true` | Fake streamed replies, with no API call and no cost. Set `false` **and** add a key for real Grok. |
+| `OFFICE_TOKEN` | — | Optional. Requires an `x-office-token` header on `/api/tasks` (the form asks for it once). |
+
+`TASK_CONCURRENCY` (2), `MAX_TURNS` (6) and `XAI_TIMEOUT_MS` (120000) are optional.
+
+**Turning off MOCK_MODE**: put your key in `.env`, change `MOCK_MODE=true` to
+`MOCK_MODE=false`, and restart `npm start`. The server prints which mode it is
+in. Without a key it always stays in mock mode, so a typo can't cause a paid
+call. Live Grok tasks are labelled **REAL**; mock tasks are labelled **SIMULATED**.
+
+**How it works**: `POST /api/tasks` validates and queues the task, and a worker
+runs at most 2 at a time (highest priority first, one per Bot). `runAgent`
+(`backend/src/grok.ts`) streams Grok's reply and turns tool calls
+(`move_to`, `say`, `finish_task`) into office events. Every event records
+`tokens_in`, `tokens_out` and `model`. A task stops after 6 turns or when it
+passes its `max_cost_usd`. 429/5xx errors are retried 3 times with backoff.
+The queue and today's spend are saved in `data/tasks.json`. A task that was
+running during a restart is marked failed (use Retry), never re-run on its own.
+Also available: `GET /api/tasks`, `POST /api/tasks/:id/cancel`, `POST /api/tasks/:id/retry`.
+
+Try the whole flow for free: `npm run tasks:demo` submits 3 tasks in MOCK_MODE
+and prints every event. The public preview has no server, so placing tasks only
+works locally.
 
 ## What you can do
 

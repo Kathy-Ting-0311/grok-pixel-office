@@ -1,10 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // Phone-sized viewport with touch input (iPhone 13 metrics, run in Chromium).
-test.use({ viewport: { width: 390, height: 664 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+test.use({
+  viewport: { width: 390, height: 664 },
+  deviceScaleFactor: 3,
+  isMobile: true,
+  hasTouch: true,
+});
 
 const shots = process.env.SHOT_DIR;
-const shot = async (page: Page, name: string) => shots && page.screenshot({ path: `${shots}/${name}.png` });
+const shot = async (page: Page, name: string) =>
+  shots && page.screenshot({ path: `${shots}/${name}.png` });
 
 async function boot(page: Page) {
   const errors: string[] = [];
@@ -54,9 +60,21 @@ test('phone: one side panel at a time, modals fit the screen', async ({ page }) 
   await expect(page.getByTestId('right-panel')).toBeVisible();
   await expect(page.getByTestId('left-sidebar')).toHaveCount(0);
   expect(await inViewport(page, 'right-panel')).toBe(true);
-  for (const m of ['settings', 'tasks', 'meeting', 'replay', 'achievements', 'customize', 'help']) {
+  for (const m of [
+    'settings',
+    'tasks',
+    'meeting',
+    'replay',
+    'achievements',
+    'customize',
+    'help',
+    'results',
+  ]) {
     await page.evaluate((m) => (window as any).__office.store.getState().openModal(m), m);
-    const [sw, cw] = await page.locator('[role=dialog] .overflow-auto').first().evaluate((d) => [d.scrollWidth, d.clientWidth]);
+    const [sw, cw] = await page
+      .locator('[role=dialog] .overflow-auto, [role=dialog] .overflow-y-auto')
+      .first()
+      .evaluate((d) => [d.scrollWidth, d.clientWidth]);
     expect(sw, `${m} modal scrolls sideways`).toBeLessThanOrEqual(cw);
   }
 });
@@ -68,7 +86,8 @@ test('phone: tap a catalog item, then tap the floor to place it', async ({ page 
   await page.getByTestId('catalog-plant_small').tap();
   // The builder folds away so the floor can be tapped.
   await expect(page.getByTestId('build-panel')).toContainText('tap the floor');
-  const count = () => page.evaluate(() => (window as any).__office.store.getState().layout.furniture.length);
+  const count = () =>
+    page.evaluate(() => (window as any).__office.store.getState().layout.furniture.length);
   const before = await count();
   const top = (await page.getByTestId('build-panel').boundingBox())!.y;
   let placed = false;
@@ -80,7 +99,10 @@ test('phone: tap a catalog item, then tap the floor to place it', async ({ page 
     [6, 10],
     [9, 10],
   ]) {
-    const p = await page.evaluate(([x, z]) => (window as any).__office.camera.project(x + 0.5, 0, z + 0.5), [x, z]);
+    const p = await page.evaluate(
+      ([x, z]) => (window as any).__office.camera.project(x + 0.5, 0, z + 0.5),
+      [x, z],
+    );
     if (p.y > top - 8 || p.y < 60) continue;
     await page.touchscreen.tap(p.x, p.y);
     await page.waitForTimeout(300);

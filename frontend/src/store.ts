@@ -28,7 +28,15 @@ export type Selection =
   | { kind: 'room'; id: string }
   | null;
 export type Modal =
-  null | 'tasks' | 'meeting' | 'replay' | 'settings' | 'achievements' | 'customize' | 'help';
+  | null
+  | 'tasks'
+  | 'meeting'
+  | 'replay'
+  | 'settings'
+  | 'achievements'
+  | 'customize'
+  | 'help'
+  | 'results';
 export type BuildTool = 'select' | 'place' | 'floor' | 'room' | 'wall' | 'erase';
 export type Quality = 'low' | 'medium' | 'high';
 
@@ -43,6 +51,8 @@ export type Settings = {
   maxBubbles: number;
   showStats: boolean;
   enableRotate: boolean;
+  /** Completion pop-up: always, only while this tab is visible and focused, or never (toast instead). */
+  popupOnCompletion: 'always' | 'focused' | 'off';
   audio: {
     enabled: boolean;
     muted: boolean;
@@ -71,6 +81,7 @@ export const defaultSettings = (): Settings => ({
   maxBubbles: 4,
   showStats: false,
   enableRotate: true,
+  popupOnCompletion: 'always',
   audio: {
     enabled: false,
     muted: false,
@@ -130,7 +141,12 @@ type CameraRequest = {
   nonce: number;
 };
 
-export type Toast = { id: number; text: string; tone: 'info' | 'good' | 'warn' };
+export type Toast = {
+  id: number;
+  text: string;
+  tone: 'info' | 'good' | 'warn';
+  action?: { label: string; run: () => void };
+};
 
 type Store = {
   connection: Connection;
@@ -190,7 +206,7 @@ type Store = {
   setFollow: (id?: string) => void;
   toggleLeft: () => void;
   toggleRight: () => void;
-  toast: (text: string, tone?: Toast['tone']) => void;
+  toast: (text: string, tone?: Toast['tone'], action?: Toast['action']) => void;
 
   startReplay: (r: Omit<ReplayState, 'time' | 'playing' | 'speed' | 'state'>) => void;
   setReplay: (p: Partial<ReplayState>) => void;
@@ -393,10 +409,13 @@ export const useStore = create<Store>((set, get) => ({
       rightOpen: !s.rightOpen,
       leftOpen: !s.rightOpen && isNarrow() ? false : s.leftOpen,
     })),
-  toast: (text, tone = 'info') => {
+  toast: (text, tone = 'info', action) => {
     const id = ++toastId;
-    set((s) => ({ toasts: [...s.toasts, { id, text, tone }].slice(-4) }));
-    setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), 3500);
+    set((s) => ({ toasts: [...s.toasts, { id, text, tone, action }].slice(-4) }));
+    setTimeout(
+      () => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+      action ? 9000 : 3500,
+    );
   },
 
   startReplay: (r) =>

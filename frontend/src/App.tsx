@@ -4,6 +4,10 @@ import { audio } from './systems/audio';
 import { Scene, perf } from './scene/Scene';
 import { BottomToolbar, LeftSidebar, TopBar } from './ui/Bars';
 import { RightPanel } from './ui/RightPanel';
+import { ResultsBoard } from './ui/ResultsBoard';
+import { CompletionPopup } from './ui/CompletionPopup';
+import { useResultsSync } from './ui/results';
+import { useBoardSync } from './ui/TaskComposer';
 import { BuildPanel } from './ui/BuildPanel';
 import { Dashboard } from './ui/Dashboard';
 import {
@@ -53,6 +57,18 @@ function Toasts() {
           className={`panel px-3 py-1 text-xs font-bold ${t.tone === 'warn' ? '!bg-rose-100' : t.tone === 'good' ? '!bg-emerald-100' : ''}`}
         >
           {t.text}
+          {t.action && (
+            <button
+              className="btn pointer-events-auto ml-2 !min-h-0 !px-1.5 !py-0 !text-[10px]"
+              onClick={() => {
+                t.action!.run();
+                useStore.setState((s) => ({ toasts: s.toasts.filter((x) => x.id !== t.id) }));
+              }}
+              data-testid="toast-action"
+            >
+              {t.action.label}
+            </button>
+          )}
         </div>
       ))}
     </div>
@@ -64,6 +80,9 @@ export function App() {
   const modal = useStore((s) => s.modal);
   const showStats = useStore((s) => s.settings.showStats);
   const audioSettings = useStore((s) => s.settings.audio);
+  useResultsSync();
+  // Task cards in chats stay live even when no task form is open.
+  useBoardSync();
   useEffect(() => audio.apply(audioSettings), [audioSettings]);
   // Notification sounds for fresh live events.
   useEffect(
@@ -95,6 +114,8 @@ export function App() {
       {modal === 'achievements' && <AchievementsModal />}
       {modal === 'customize' && <Customizer />}
       {modal === 'help' && <HelpModal />}
+      {modal === 'results' && <ResultsBoard />}
+      <CompletionPopup />
     </main>
   );
 }

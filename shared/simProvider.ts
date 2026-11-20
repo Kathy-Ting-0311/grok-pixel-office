@@ -55,6 +55,8 @@ export class SimulationProvider {
   private seq = 0;
   private meeting?: SimMeeting;
   private nextMeetingAt: number;
+  /** Bots doing placed (non-simulated) work: the demo gives them no new tasks or meetings. */
+  readonly held = new Set<string>();
   constructor(
     roster: Bot[],
     private readonly options: { seed?: number; now?: number; prefix?: string; meetingEveryMs?: [number, number] } = {},
@@ -86,7 +88,7 @@ export class SimulationProvider {
     if (this.meeting) return [];
     const chosen = participants?.length
       ? participants
-      : this.bots.filter((b) => b.bot.isChief || b.phase !== 'working').map((b) => b.bot.id);
+      : this.bots.filter((b) => !this.held.has(b.bot.id) && (b.bot.isChief || b.phase !== 'working')).map((b) => b.bot.id);
     if (chosen.length < 2) return [];
     const id = `meeting-${now.toString(36)}-${this.seq}`;
     this.meeting = { id, participants: chosen, endsAt: now + this.rng.range(45000, 75000), nextLineAt: now + 9000, lines: 0 };
@@ -115,6 +117,7 @@ export class SimulationProvider {
       if (this.meeting?.participants.includes(s.bot.id) && s.phase !== 'working') continue;
       if (now < s.nextAt) continue;
       const id = s.bot.id;
+      if (s.phase === 'idle' && this.held.has(id)) continue;
       if (s.phase === 'idle') {
         s.taskId = `sim-task-${now.toString(36)}-${(this.seq++).toString(36)}`;
         s.title = this.rng.pick(taskTitles[id] ?? ['Demo task']);
