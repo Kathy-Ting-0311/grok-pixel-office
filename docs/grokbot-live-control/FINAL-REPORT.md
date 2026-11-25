@@ -1,7 +1,8 @@
 # Grok Bot Live Control — Final report
 
-Date: 2026-11-25. Branch: `feature/grokbot-live-control` (from `grok-chat-tasks-results` at `f89deec`).
-Nothing is committed, pushed or merged.
+Date: 2026-11-25. Branch: `feature/grokbot-live-control` (from `f89deec`, the commit PR #1 merged into `main`).
+Committed and pushed; open as PR #2 (not merged). Merging into `main` gives the same result as merging into
+`grok-chat-tasks-results`, which has the same files as `main`.
 
 **Outcome:** read-only Live Control works (roster, group and transcript sync, the "Live Grok Bot" view, and live
 messages survive a page reload).
@@ -88,14 +89,9 @@ from `f89deec` are unchanged.
 
 ## 5. Screenshots
 
-Session scratch folder (outside the repo; can be cleared on reboot):
-`/private/tmp/claude-501/-Users-huangjianting-Projects-grok-pixel-office/d0efb654-6e1a-49f3-8bab-cd61857bf285/scratchpad/shots2/`
-
-- **Before (baseline `f89deec`):** `baseline/1-office.view.png`, `2-sidebar.view.png`,
-  `3-conversation-panel.view.png`, `4-group-chat-meetings.view.png`, `5-replay-picker.view.png`
-- **After, flag off:** `p4-flag-off/` (same five names); per-screen diffs in `p4-diff/`
-- **After, flag on:** `p4-on/A-menu.png`, `p4-on/B-live-tab-paused.png`, `p4-on/C-live-tab-messages.png`
-  (these contain real transcript text)
+The before/after screenshots (baseline `f89deec`, flag off, flag on) were kept in the session scratch folder
+outside the repo. The flag-on ones contained real transcript text, so the folder was deleted at your request on
+2026-11-25. The comparison results are in section 1.
 
 ## 6. Data check
 
@@ -137,8 +133,8 @@ Resolved after the first version of this report (owner decisions, 2026-11-25):
   and the lockfile byte-identical). `npm run test:e2e`: 16/16. One run showed a one-off failure of the existing
   `f89deec` test "first playable scene" (`labels overlap`; characters wander randomly). It then passed 5/5 on both
   this branch and `f89deec`, and the full suite passed 16/16 on the rerun.
-- **Clean-up done:** the memory note, `~/pixel-office-cleanup/`, the two database backups and the Phase 0 backups
-  were deleted.
+- **Clean-up done:** the memory note, `~/pixel-office-cleanup/`, the two database backups, the Phase 0 backups and
+  the old session scratch folder (copies of real transcripts and screenshots) were deleted.
 
 Still open:
 
@@ -149,7 +145,11 @@ Still open:
 2. **Deviations from PLAN.md:** the planned `sends.ts` ledger and the group thread section in `Modals.tsx` were not
    built, and the view lives in `frontend/src/live/LiveGrokBotTab.tsx` instead of the planned file names. Four
    Phase 2 integration tests still start their in-memory test server with `simulation: true`.
-3. **Old session scratch folder:** it still holds copies of real transcripts and screenshots with real text
-   (`/private/tmp/claude-501/-Users-huangjianting-Projects-grok-pixel-office/d0efb654-…/`). It is outside the
-   repo and cleared on reboot, or can be deleted on request.
-4. **Pull request** from `feature/grokbot-live-control` into `grok-chat-tasks-results`: to be opened by the owner.
+3. **Pull request #2** is open (base `grok-chat-tasks-results`; retargeting to `main` recommended, since PR #1 is
+   already merged there). Not merged.
+4. **Security before enabling:** `.env` has no `OFFICE_TOKEN`, so any local process (or a website using DNS
+   rebinding, since the `Host` header is not checked) can read `/api/live-control/thread/<id>`, which returns real
+   transcripts. The existing chat and task routes have the same exposure. Setting `OFFICE_TOKEN` closes it for the
+   Live Control routes (the UI then needs the same token in its settings).
+5. **Polling after Resume** continues with no page open until Pause or a restart (~0.4 s CPU per call, one call
+   every 10–15 s).

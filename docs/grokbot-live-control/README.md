@@ -146,11 +146,9 @@ there is nothing to clean up.
 
 ## Roll back
 
-The feature lives only on the branch `feature/grokbot-live-control`. The original branch is
-`grok-chat-tasks-results` (`f89deec`), which this work has not changed.
+The feature is PR #2 from `feature/grokbot-live-control`. `main` (with PR #1 merged) does not contain it.
 
-- Once the work is committed on the feature branch, switch back with `git switch grok-chat-tasks-results`.
-  Delete the feature branch only when you are sure.
-- While the work is still uncommitted, switching branches carries the uncommitted changes along, so it is not a
-  rollback by itself: commit on the feature branch first, then switch. Do not use `git reset --hard`,
-  `git clean` or `git restore`.
+- **Before it is merged:** close or leave PR #2; `main` is unchanged. Locally, `git switch main`.
+- **After it is merged:** use GitHub's **Revert** button on the merged PR (it opens a revert PR), or run
+  `git revert -m 1 <merge commit>` on a new branch and open a PR. No data migration is needed: no schema or saved
+  data changed. Do not use `git reset --hard`, `git push --force` or rebase.
