@@ -1,0 +1,278 @@
+{
+  "_note": "Real grok-bot-cli 9616503 transcript entries, sanitised: every free-text string, nonce, request id, URL and name replaced; agent UUIDs replaced with fixture ids (owner 0000…0001, Coz 1111…, Krystal 2222…, group 9999…). Structure, kind, role and message.type are real.",
+  "samples": [
+    {
+      "name": "1:1 owner user message",
+      "thread": "11111111-1111-4111-8111-111111111111",
+      "isGroup": false,
+      "entry": {
+        "kind": "message",
+        "id": "t1u",
+        "role": "user",
+        "content": "[redacted]",
+        "isStreaming": false,
+        "timestampMs": 1794891954401,
+        "clientNonce": "[redacted]",
+        "requestId": "55555555-5555-4555-8555-000000000001",
+        "seq": 7
+      }
+    },
+    {
+      "name": "1:1 bot reply, send-message, no author",
+      "thread": "11111111-1111-4111-8111-111111111111",
+      "isGroup": false,
+      "entry": {
+        "kind": "send-message",
+        "id": "t1s0",
+        "message": {
+          "type": "text",
+          "content": "[redacted]"
+        },
+        "timestampMs": 1794891970172,
+        "requestId": "55555555-5555-4555-8555-000000000001",
+        "seq": 8
+      }
+    },
+    {
+      "name": "1:1 message role assistant (no rule matches)",
+      "thread": "11111111-1111-4111-8111-111111111111",
+      "isGroup": false,
+      "entry": {
+        "kind": "message",
+        "id": "agent-outbound-redacted",
+        "role": "assistant",
+        "content": "[redacted]",
+        "isStreaming": false,
+        "timestampMs": 1795067767402,
+        "toAgent": {
+          "id": "55555555-5555-4555-8555-000000000002",
+          "name": "[redacted]",
+          "kind": "agent"
+        },
+        "requestId": "55555555-5555-4555-8555-000000000003",
+        "seq": 36
+      }
+    },
+    {
+      "name": "group bot message with author",
+      "thread": "99999999-9999-4999-8999-999999999999",
+      "isGroup": true,
+      "entry": {
+        "kind": "send-message",
+        "id": "t13s1",
+        "message": {
+          "type": "text",
+          "content": "[redacted]"
+        },
+        "timestampMs": 1794998614842,
+        "requestId": "[redacted]",
+        "author": {
+          "id": "55555555-5555-4555-8555-000000000004",
+          "name": "[redacted]"
+        },
+        "seq": 107
+      }
+    },
+    {
+      "name": "group owner user message",
+      "thread": "99999999-9999-4999-8999-999999999999",
+      "isGroup": true,
+      "entry": {
+        "kind": "message",
+        "id": "t14u",
+        "role": "user",
+        "content": "[redacted]",
+        "richText": "[redacted]",
+        "isStreaming": false,
+        "timestampMs": 1795000652356,
+        "clientNonce": "55555555-5555-4555-8555-000000000005",
+        "seq": 113
+      }
+    },
+    {
+      "name": "group attachment with author",
+      "thread": "99999999-9999-4999-8999-999999999999",
+      "isGroup": true,
+      "entry": {
+        "kind": "send-message",
+        "id": "t14s3",
+        "message": {
+          "type": "attachment",
+          "url": "[redacted]",
+          "file_name": "[redacted]",
+          "source_path": "[redacted]",
+          "alt": "[redacted]",
+          "width": 848,
+          "height": 1200
+        },
+        "timestampMs": 1795000698124,
+        "requestId": "[redacted]",
+        "author": {
+          "id": "22222222-2222-4222-8222-222222222222",
+          "name": "[redacted]"
+        },
+        "seq": 117
+      }
+    },
+    {
+      "name": "1:1 user-form",
+      "thread": "55555555-5555-4555-8555-000000000006",
+      "isGroup": false,
+      "entry": {
+        "kind": "send-message",
+        "id": "t4s9",
+        "message": {
+          "type": "user-form",
+          "formRequest": {
+            "secureValues": true,
+            "title": "Sample form title",
+            "instruction": "[redacted]",
+            "reason": "[redacted]",
+            "domains": ["[redacted]"],
+            "fields": [
+              {
+                "id": "[redacted]",
+                "label": "[redacted]",
+                "type": "text",
+                "required": true,
+                "defaultValue": "[redacted]"
+              },
+              {
+                "id": "[redacted]",
+                "label": "[redacted]",
+                "type": "password",
+                "required": true,
+                "secret": true
+              }
+            ],
+            "vaultKind": "[redacted]",
+            "vaultSite": "[redacted]",
+            "saveAvailable": true
+          }
+        },
+        "timestampMs": 1795592695310,
+        "requestId": "55555555-5555-4555-8555-000000000007",
+        "formRequestId": "55555555-5555-4555-8555-000000000008",
+        "formSubmissionEffect": {
+          "kind": "settled",
+          "secureValuesExpiresAtMs": 1795635929401,
+          "wakeDelivery": "[redacted]"
+        },
+        "formResolution": "[redacted]",
+        "formFieldOutcomes": [
+          {
+            "id": "[redacted]",
+            "filled": false,
+            "secureValueStorage": "[redacted]"
+          },
+          {
+            "id": "[redacted]",
+            "filled": false,
+            "secureValueStorage": "[redacted]"
+          }
+        ],
+        "seq": 80
+      }
+    },
+    {
+      "name": "1:1 widget",
+      "thread": "55555555-5555-4555-8555-000000000006",
+      "isGroup": false,
+      "entry": {
+        "kind": "send-message",
+        "id": "t2s9",
+        "message": {
+          "type": "widget",
+          "widget": {
+            "prompt": "[redacted]",
+            "options": [
+              {
+                "label": "[redacted]",
+                "value": "[redacted]",
+                "style": "[redacted]"
+              },
+              {
+                "label": "[redacted]",
+                "value": "[redacted]"
+              }
+            ],
+            "allowCustom": true
+          }
+        },
+        "timestampMs": 1795588122881,
+        "requestId": "55555555-5555-4555-8555-000000000009",
+        "respondedValue": "[redacted]",
+        "seq": 49
+      }
+    },
+    {
+      "name": "1:1 local-tool-permission",
+      "thread": "22222222-2222-4222-8222-222222222222",
+      "isGroup": false,
+      "entry": {
+        "kind": "send-message",
+        "id": "t2s2",
+        "message": {
+          "type": "local-tool-permission",
+          "ask": {
+            "requestId": "[redacted]",
+            "action": "[redacted]",
+            "target": "[redacted]",
+            "machineId": "55555555-5555-4555-8555-000000000010",
+            "status": "[redacted]"
+          }
+        },
+        "timestampMs": 1794917216389,
+        "requestId": "55555555-5555-4555-8555-000000000011",
+        "seq": 14
+      }
+    },
+    {
+      "name": "unknown kind: feedback",
+      "thread": "11111111-1111-4111-8111-111111111111",
+      "isGroup": false,
+      "entry": {
+        "kind": "feedback",
+        "id": "[redacted]",
+        "requestId": "55555555-5555-4555-8555-000000000012",
+        "state": "[redacted]",
+        "timestampMs": 1794892890545,
+        "seq": 16
+      }
+    },
+    {
+      "name": "unknown kind: event",
+      "thread": "55555555-5555-4555-8555-000000000013",
+      "isGroup": false,
+      "entry": {
+        "kind": "event",
+        "id": "[redacted]",
+        "event": {
+          "type": "automation-changed",
+          "action": "[redacted]",
+          "automationId": "[redacted]",
+          "automationName": "[redacted]"
+        },
+        "timestampMs": 1795328448602,
+        "requestId": "55555555-5555-4555-8555-000000000014",
+        "seq": 78
+      }
+    },
+    {
+      "name": "owner's own thread send-message",
+      "thread": "00000000-0000-4000-8000-000000000001",
+      "isGroup": false,
+      "entry": {
+        "kind": "send-message",
+        "id": "t32s365",
+        "message": {
+          "type": "text",
+          "content": "[redacted]"
+        },
+        "timestampMs": 1795101381413,
+        "requestId": "55555555-5555-4555-8555-000000000015",
+        "seq": 365
+      }
+    }
+  ]
+}
