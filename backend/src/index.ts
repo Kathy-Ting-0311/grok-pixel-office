@@ -20,6 +20,7 @@ import { GrokBotGatewayAdapter } from './grokbot/adapter';
 import { registerLiveControlRoutes } from './grokbot/routes';
 import { bridgeToOffice } from './grokbot/bridge';
 import { parseAgentMap } from './grokbot/mapping';
+import { hostGuarded, isLocalHost } from './hostCheck';
 
 const port = Number(process.env.OFFICE_PORT ?? 4319);
 const dbPath = process.env.OFFICE_DATABASE ?? resolve('data/office.db');
@@ -158,6 +159,10 @@ export async function buildServer(opts: {
     return { sessions: splitSessions(fake).reverse() };
   });
 
+  // DNS-rebinding guard for the event stream and Live Control: non-local Host headers get 403.
+  app.addHook('onRequest', async (req, reply) => {
+    if (hostGuarded(req.url) && !isLocalHost(req.headers.host)) return reply.code(403).send({ error: 'Forbidden host.' });
+  });
   // Server-Sent Events: snapshot then live events.
   app.get('/api/stream', (req, reply) => {
     reply.raw.writeHead(200, {
