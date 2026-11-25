@@ -6,11 +6,31 @@ Status (2026-11-25):
   "…" menu) showing the real 1:1 transcript from Grok Bot Desktop, a connection indicator (Live / Paused / Off)
   with Pause, Resume and Reconnect, and an attribution label on every message. Real bot messages also appear in
   the existing conversation panel and speech bubbles. Every server start begins **paused**; Resume starts reading.
-- **Live send: blocked (409, server-run bots).** The one approved live send was rejected by the gateway on
-  2026-11-25 (HTTP 409: "This Bot runs on the server, and this version of the app can't message it. Update the
-  app and try again."); the message was not delivered. The send box is shown disabled, and the server refuses send
-  requests while `GROKBOT_LIVE_SEND_ENABLED` is false (the default).
+- **Live send: blocked (409, server-run bots). NOT verified at any layer.** Two approved test sends were
+  rejected, neither delivered nor retried (HTTP 409: "This Bot runs on the server, and this version of the app
+  can't message it. Update the app and try again."). The send box is shown disabled, and the server refuses send
+  requests while `GROKBOT_LIVE_SEND_ENABLED` is false (the default; it was never turned on).
 - **Live Control: NOT verified.** Sending has never succeeded.
+
+### Live send test log (bottom-up plan, 2026-11-25)
+
+| Layer | Result |
+| --- | --- |
+| 0 · Facts | Grok Bot 1.3.0 (newest offered; About shows no update). CLI `9616503`. Gateway reachable for reads (9 bots, 1 group). Coz's newest entry: seq 52. |
+| 1 · CLI alone | One `gbot send <Coz> "Reply with CONNECTION_OK only." --gateway --no-history --json` at 13:34:56 UTC: **409, `delivery: rejected`**. Not retried. (An earlier send to Krystal at 09:12:36 UTC got the same 409.) |
+| 1B · App update | Not possible: 1.3.0 is the newest release. No resend. |
+| 2 · Server route | Not run (needs layer 1). |
+| 3 · Reply and bubble | Not run. |
+| 4 · UI send box | Not built (still disabled). |
+| 5 · Group | Not run; the server still refuses group targets. |
+
+Why the app update matters: the CLI talks to Cursor's servers (`api2.cursor.sh`), not to the local app, and
+sends the installed app's version (`x-cursor-client-version`, read from Grok Bot.app). The server refuses that
+version for server-run bots. A real newer release would change it; overriding `SAND_CLIENT_VERSION` would only
+fake it and is ruled out.
+
+To reopen: when Grok Bot offers a version newer than 1.3.0, update it (keep a backup of the app), check that
+reads still work, then repeat layer 1 with one approved send.
 
 It is **off by default**. With the flag off, nothing below runs: no adapter, no CLI process, no timers, no
 `/api/live-control/*` routes (they return 404), and the page shows no Live Grok Bot view and makes no live-control
@@ -106,7 +126,7 @@ Live Control spec refuses to start if its ports are already in use.
 
 ## Known limitations
 
-- **Live send is blocked.** Grok Bot Desktop's gateway answers 409 ("This Bot runs on the server…") to this CLI's
+- **Live send is blocked** (see the test log above). The gateway answers 409 ("This Bot runs on the server…") to this CLI's
   send route for server-run bots. The send box is disabled and the server refuses send requests.
 - **Live messages survive a reload only while the server runs.** The in-memory buffer keeps the last 100 per
   thread; a server restart clears it (by design, nothing is stored). The Live Grok Bot view itself always
