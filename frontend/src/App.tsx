@@ -10,6 +10,7 @@ import { useResultsSync } from './ui/results';
 import { useBoardSync } from './ui/TaskComposer';
 import { BuildPanel } from './ui/BuildPanel';
 import { Dashboard } from './ui/Dashboard';
+import { TokenNeeded } from './ui/TokenNeeded';
 import {
   AchievementsModal,
   Customizer,
@@ -107,6 +108,7 @@ export function App() {
       {mode === 'replay' && <ReplayBar />}
       {showStats && <StatsOverlay />}
       <Toasts />
+      <TokenNeeded />
       {modal === 'tasks' && <Dashboard />}
       {modal === 'meeting' && <MeetingPanel />}
       {modal === 'replay' && <ReplayPicker />}

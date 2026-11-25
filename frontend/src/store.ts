@@ -92,7 +92,7 @@ export const defaultSettings = (): Settings => ({
   },
 });
 
-export type Connection = 'connecting' | 'backend' | 'fallback';
+export type Connection = 'connecting' | 'backend' | 'fallback' | 'token-needed';
 
 export type SourcesStatus = {
   simulation: { enabled: boolean; startedAt?: string };

@@ -82,7 +82,14 @@ export function TopBar() {
             cls: 'bg-violet-600 text-white',
             title: 'Local backend not reachable: fictional activity generated in this browser.',
           }
-        : connection === 'connecting'
+        : connection === 'token-needed'
+          ? {
+              text: 'TOKEN NEEDED',
+              short: 'TOKEN',
+              cls: 'bg-amber-500 text-ink',
+              title: 'This server needs its access token. Nothing is simulated meanwhile.',
+            }
+          : connection === 'connecting'
           ? { text: 'CONNECTING…', short: 'CONNECTING…', cls: 'bg-stone-500 text-white', title: '' }
           : realCache
             ? {

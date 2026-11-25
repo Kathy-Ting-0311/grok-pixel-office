@@ -62,18 +62,59 @@ function scheduleRetry() {
   if (retryTimer) return;
   retryTimer = window.setTimeout(async () => {
     retryTimer = undefined;
-    if (await healthy()) connectStream();
+    if (await healthy()) void connectStream();
     else scheduleRetry();
   }, 10000);
 }
 
-function connectStream() {
+/**
+ * The stream URL with a one-time ticket. The access token goes only in a request header, never in a URL (URLs
+ * reach the dev proxy's log). 'token-needed' when the server refuses the token; servers without tickets still work.
+ */
+async function streamUrl(): Promise<string> {
+  try {
+    const r = await fetch('/api/stream-ticket', {
+      method: 'POST',
+      headers: { 'x-office-token': loadLocal<string>('office-token') ?? '' },
+    });
+    if (r.status === 401) return 'token-needed';
+    const ticket = r.ok ? ((await r.json()) as { ticket?: string }).ticket : undefined;
+    return ticket ? `/api/stream?ticket=${encodeURIComponent(ticket)}` : '/api/stream';
+  } catch {
+    return '/api/stream';
+  }
+}
+
+/** The server needs its access token: say so and wait. Never start the browser simulation for this. */
+function tokenNeeded() {
+  stopFallback();
+  useStore.getState().setConnection('token-needed');
+}
+
+/** Save the access token (same key as placed tasks) and connect again. */
+export function unlockStream(token: string) {
+  saveLocal('office-token', token);
+  void connectStream();
+}
+
+let streamFailures = 0;
+async function recoverStream() {
+  // A ticket works once, so reconnect with a fresh one; fall back only when the server is really down.
+  if (++streamFailures <= 3 && (await healthy())) return void connectStream();
+  backendUp = false;
+  startFallback();
+}
+
+async function connectStream() {
   source?.close();
-  const es = new EventSource('/api/stream');
+  const url = await streamUrl();
+  if (url === 'token-needed') return tokenNeeded();
+  const es = new EventSource(url);
   source = es;
   let opened = false;
   es.addEventListener('snapshot', (m) => {
     opened = true;
+    streamFailures = 0;
     backendUp = true;
     stopFallback();
     const data = JSON.parse((m as MessageEvent).data) as {
@@ -93,20 +134,10 @@ function connectStream() {
     useStore.getState().setSources(JSON.parse((m as MessageEvent).data)),
   );
   es.onerror = () => {
-    if (es.readyState === EventSource.CLOSED || !opened) {
-      es.close();
-      backendUp = false;
-      startFallback();
-    } else {
-      // EventSource reconnects by itself; if it stays down, fall back.
-      setTimeout(() => {
-        if (es.readyState !== EventSource.OPEN) {
-          es.close();
-          backendUp = false;
-          startFallback();
-        }
-      }, 6000);
-    }
+    // Never let EventSource reconnect on its own with a used ticket; decide here instead.
+    es.close();
+    if (source !== es) return;
+    window.setTimeout(() => void recoverStream(), opened ? 3000 : 0);
   };
 }
 
@@ -163,7 +194,7 @@ export async function startConnection() {
   if (up) {
     backendUp = true;
     await loadBackendState();
-    connectStream();
+    void connectStream();
   } else startFallback();
   persistChanges();
 }
