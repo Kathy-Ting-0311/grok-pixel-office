@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
-import { timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
@@ -206,6 +206,26 @@ export async function buildServer(opts: {
       return reply
         .code(401)
         .send({ error: 'This server requires an access token (x-office-token header).' });
+  });
+  // /api/stream with OFFICE_TOKEN set: EventSource cannot send headers, and a token in the URL would reach the Vite
+  // proxy's error log, so the page trades the token (header only) for a one-time ticket that expires after 30 s.
+  const streamTickets = new Map<string, number>();
+  app.post('/api/stream-ticket', async (req, reply) => {
+    if (!tokenOk(req.headers['x-office-token']))
+      return reply.code(401).send({ error: 'This server requires an access token (x-office-token header).' });
+    const now = Date.now();
+    for (const [t, exp] of streamTickets) if (exp < now || streamTickets.size > 1000) streamTickets.delete(t);
+    const ticket = randomBytes(24).toString('base64url');
+    streamTickets.set(ticket, now + 30_000);
+    return { ticket };
+  });
+  app.addHook('onRequest', async (req, reply) => {
+    if (!grok.officeToken || req.url.split('?')[0] !== '/api/stream') return;
+    const ticket = (req.query as { ticket?: string } | undefined)?.ticket;
+    const exp = ticket ? streamTickets.get(ticket) : undefined;
+    if (ticket) streamTickets.delete(ticket); // single use
+    if (!exp || exp < Date.now())
+      return reply.code(401).send({ error: 'This server requires an access token (stream ticket).' });
   });
   // Grok Bot Live Control: nothing below is constructed, registered or scheduled when the flag is off.
   const liveCfg = opts.liveControl?.config ?? loadLiveControlConfig();
