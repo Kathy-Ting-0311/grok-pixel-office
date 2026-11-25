@@ -37,6 +37,10 @@ export type LiveMessage = {
   /** The rule that decided the attribution, e.g. "author.id" or "1:1 send-message, no author". */
   basis: string;
   raw: LiveRaw;
+  /** The turn this entry belongs to (Grok Bot's requestId); links a reply to its attachments. */
+  requestId?: string;
+  /** Attachment entries only: the file's name and type. Never its URL or path (they are not reachable here). */
+  attachment?: { name: string; type: string };
 };
 
 /** Shown while GROKBOT_LIVE_SEND_ENABLED is off. */

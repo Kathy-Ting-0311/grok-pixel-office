@@ -111,8 +111,29 @@ export function toLiveMessage(
     attribution: a.attribution,
     basis: a.basis,
     raw: rawOf(e),
+    ...(typeof e.requestId === 'string' ? { requestId: e.requestId } : {}),
+    ...attachmentOf(e),
   };
 }
+
+/** Name and type of an attachment entry; the URL and source path are deliberately dropped. */
+function attachmentOf(e: Entry): { attachment?: { name: string; type: string } } {
+  if (messageType(e) !== 'attachment') return {};
+  const m = e.message as { file_name?: unknown; url?: unknown };
+  const raw = typeof m.file_name === 'string' ? m.file_name : typeof m.url === 'string' ? m.url : '';
+  const name = scrub(raw.split(/[\\/]/).pop() ?? '', 120) || 'attachment';
+  return { attachment: { name, type: fileKind(name) } };
+}
+
+const kinds: [RegExp, string][] = [
+  [/\.(png|jpe?g|gif|webp|svg|heic)$/i, 'image'],
+  [/\.(mp4|mov|webm|m4v)$/i, 'video'],
+  [/\.(mp3|wav|m4a|aac|ogg)$/i, 'audio'],
+  [/\.(pdf|docx?|pptx?|xlsx?|md|txt|csv|rtf)$/i, 'document'],
+  [/\.(zip|tar|gz|tgz|7z|rar)$/i, 'archive'],
+];
+/** A coarse kind from the file name (no content is read). */
+export const fileKind = (name: string) => kinds.find(([re]) => re.test(name))?.[1] ?? 'file';
 
 /** Per-thread incremental state: cursor for `--after`, bounded dedupe set, message buffer. */
 export class ThreadSync {

@@ -394,6 +394,8 @@ export type ResultEntry = {
   cost: number;
   pinned: boolean;
   read: boolean;
+  /** 'grok-desktop' for results saved from Grok Bot Desktop; absent for xAI task results. */
+  src?: 'grok-desktop';
 };
 export type ResultRecord = {
   task_id: number;
@@ -414,6 +416,16 @@ export type ResultRecord = {
   cost_usd: number;
   model: string;
   mock: boolean;
+  /** Grok Desktop results: where the saved reply came from (no URLs: attachments are not reachable). */
+  source?: {
+    kind: 'grok-desktop';
+    agentId: string;
+    agentName: string;
+    messageKey: string;
+    timestamp: string;
+    attribution: string;
+    attachments: { name: string; type: string }[];
+  };
 };
 async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
   const r = await fetch(url, {
