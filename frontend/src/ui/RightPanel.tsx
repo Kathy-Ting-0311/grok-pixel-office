@@ -31,6 +31,8 @@ import { floorLabel, floorTypes } from '../scene/textures';
 import { fmtDuration, fmtTime, Progress, Section, SourceBadge, StatusChip } from './common';
 import { TaskForm, TaskThreads } from './TaskComposer';
 import { BotChat } from './BotChat';
+import { LiveGrokBotTab } from '../live/LiveGrokBotTab';
+import { useLiveFlag } from '../live/liveFlag';
 
 export const roomTypes: RoomType[] = [
   'work',
@@ -63,7 +65,8 @@ function BotPanel({ id }: { id: string }) {
   const follow = useStore((s) => s.follow);
   const mode = useStore((s) => s.mode);
   // Chat is the default view; Profile / Tasks / Activity live in the "..." menu.
-  const [tab, setTab] = useState<'profile' | 'talk' | 'tasks' | 'chat'>('talk');
+  const [tab, setTab] = useState<'profile' | 'talk' | 'live' | 'tasks' | 'chat'>('talk');
+  const liveOn = useLiveFlag((s) => s.enabled);
   const [menu, setMenu] = useState(false);
   const [clearAsk, setClearAsk] = useState(false);
   const [chatCount, setChatCount] = useState(0);
@@ -140,11 +143,13 @@ function BotPanel({ id }: { id: string }) {
   const iconBtn = 'rounded p-1 text-ink hover:bg-paper disabled:opacity-40';
   const views = [
     ['talk', 'Chat'],
+    // Grok Bot Live Control: listed only while the server-side flag is on.
+    ...(liveOn ? ([['live', 'Live Grok Bot']] as const) : []),
     ['profile', 'Profile'],
     ['tasks', 'Tasks'],
     ['chat', 'Activity'],
   ] as const;
-  const viewName = views.find(([v]) => v === tab)![1];
+  const viewName = views.find(([v]) => v === tab)?.[1] ?? 'Chat';
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="bot-panel">
       <div className="flex h-9 shrink-0 items-center gap-1.5 pl-3 pr-1.5">
@@ -265,7 +270,8 @@ function BotPanel({ id }: { id: string }) {
       {tab === 'talk' && (
         <BotChat bot={bot} clearAsk={clearAsk} setClearAsk={setClearAsk} onCount={setChatCount} />
       )}
-      {tab !== 'talk' && (
+      {tab === 'live' && liveOn && <LiveGrokBotTab bot={bot} />}
+      {tab !== 'talk' && tab !== 'live' && (
         <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1">
           {tab === 'profile' && (
             <>
