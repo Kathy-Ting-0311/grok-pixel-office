@@ -387,3 +387,11 @@ the out-of-repo Chrome config, known limitations, demo-data notes, disable, roll
 The `officeStillWorks` helper in `tests/unit/grokbot-phase2.test.ts` now checks the local cache reader and replay
 only (no simulated meeting); unit tests 121/121. Status: **live view working; live send blocked (409, server-run
 bots); Live Control NOT verified.** Nothing committed.
+
+**Follow-up (2026-11-25), owner decisions after Phase 6.** Sending stays blocked (409). Built the reload buffer in
+`backend/src/grokbot/bridge.ts` (last 100 live office events per thread, memory only, added to the SSE snapshot only
+when the flag is on; `backend/src/index.ts` +1/−1), with `tests/unit/grokbot-buffer.test.ts` and a reload test in
+`tests/e2e/live-control.spec.ts`. Installed Playwright's Chromium (outside the project; package files unchanged):
+`npm run test:e2e` 16/16 (one earlier one-off `labels overlap` failure in the existing "first playable scene" test,
+then 5/5 on this branch and on `f89deec`). Unit 124/124. Deleted on request: the memory note, `~/pixel-office-cleanup/`,
+the database backups and the Phase 0 backups.

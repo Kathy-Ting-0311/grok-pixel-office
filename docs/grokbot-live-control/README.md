@@ -62,6 +62,9 @@ well-formed, and that it appears in the bots list. If any check fails it turns i
   they appear in conversation panels and speech bubbles. Owner, unknown and non-text entries stay in the Live
   Grok Bot view.
 - **Stores nothing.** Live messages are broadcast only; they are never written to `data/office.db` or elsewhere.
+- **Survives a page reload.** The last 100 live office messages per thread are kept in server memory and added to
+  the SSE snapshot a newly loaded page receives (only while the flag is on). The buffer is cleared when the server
+  restarts and is never written to any database.
 
 ## Running the tests
 
@@ -74,12 +77,12 @@ npm run build
 Unit tests never call the real CLI. Process-level tests (`tests/unit/grokbot-stubs.test.ts`) use a stub CLI that
 `tests/fixtures/grokbot/stubCli.ts` writes into a fresh temp folder outside the repo and removes afterwards.
 
-**Browser tests.** `npm run test:e2e` as configured still needs Playwright's own Chromium, which is not
-installed on this machine. They were run instead with the installed Google Chrome through a Playwright config
-kept **outside the repo** (never committed). During this work it lived in the session scratch folder
-(`/private/tmp/claude-501/-Users-huangjianting-Projects-grok-pixel-office/<session>/scratchpad/p5/pw-feature.config.ts`),
-which can be cleared on reboot. To recreate it, save this anywhere outside the repo, e.g.
-`~/pixel-office-e2e/pw-chrome.config.ts`:
+**Browser tests.** `npm run test:e2e` runs the suite as configured with Playwright's own Chromium. If that
+browser is missing (`~/Library/Caches/ms-playwright`), install it once with
+`node_modules/.bin/playwright install chromium` (a download outside the project; no dependency change).
+
+Alternatively, the suite can use the installed Google Chrome through a Playwright config kept **outside the repo**
+(never committed). Save this anywhere outside the repo, e.g. `~/pixel-office-e2e/pw-chrome.config.ts`:
 
 ```ts
 import base from '/Users/<you>/Projects/grok-pixel-office/playwright.config';
@@ -105,9 +108,9 @@ Live Control spec refuses to start if its ports are already in use.
 
 - **Live send is blocked.** Grok Bot Desktop's gateway answers 409 ("This Bot runs on the server…") to this CLI's
   send route for server-run bots. The send box is disabled and the server refuses send requests.
-- **Live messages are lost when the page reloads.** They are broadcast once and are not part of the SSE snapshot
-  a newly loaded page receives, so after a reload only messages that arrive afterwards are shown in the office.
-  (A bounded in-memory buffer was proposed but not built.)
+- **Live messages survive a reload only while the server runs.** The in-memory buffer keeps the last 100 per
+  thread; a server restart clears it (by design, nothing is stored). The Live Grok Bot view itself always
+  re-reads its thread from the server.
 - **One-to-one replies are attributed to the thread's bot.** In a 1:1 thread the CLI gives bot replies no
   author, so they are labelled `thread target` (inferred from the thread), not `verified`. 1:1 entries of kind
   `message` with role `assistant` (e.g. agent-outbound summaries) match no rule and are `unknown`, shown only in
@@ -126,15 +129,15 @@ On 2026-11-25 (08:31–08:33 UTC) a screenshot script accidentally ran against t
 uses `data/demo/office.db`:
 
 - **The 7 meeting rows were deleted.** The simulated "Demo stand-up" meeting (`meeting-mwvv8hk7-210`) was
-  removed by exact id in one transaction (events 100,248 → 100,241). Backup before cleanup:
-  `~/pixel-office-db-backup-before-cleanup.db`.
+  removed by exact id in one transaction (events 100,248 → 100,241). The pre-cleanup backup was deleted
+  afterwards at the owner's request.
 - **The +4 XP was left as it is.** kv `progression` most likely has `botXp` +4 each for `mock-chief-01`,
   `mock-review-06`, `mock-execution-04` and `mock-visual-05` (from that meeting's `meeting_started`). This is an
   inference, so no guess was written into the data.
 - kv `source:simulation` was rewritten as `{"enabled":true}` at 08:32:39 UTC; the simulation was already on, so
   only its timestamp changed.
 
-`data/office.db` was not affected (backup: `~/pixel-office-db-backup-before-cleanup-data-office.db`).
+`data/office.db` was not affected (verified against a backup, which was deleted afterwards at the owner's request).
 
 ## Disable
 

@@ -137,4 +137,18 @@ test.describe('Live Control flag on (stub CLI)', () => {
     await expect(page.getByTestId('live-state')).toHaveText('Paused');
     expect(errors.filter((e) => !/403/.test(e))).toEqual([]);
   });
+
+  test('a reloaded page keeps live messages in the conversation panel (in-memory buffer)', async ({ page }) => {
+    // The previous test read the stub transcript; this is a fresh page load against the same server.
+    const errors = await openBotMenu(page, ON_URL);
+    await page.getByTestId('tab-chat').click();
+    await expect(page.getByTestId('conversation')).toContainText(STUB_TEXT);
+    await page.reload();
+    await page.waitForFunction(() => (window as any).__office?.camera?.project);
+    await page.evaluate(() => (window as any).__office.store.getState().select({ kind: 'bot', id: 'mock-chief-01' }));
+    await page.getByTestId('bot-menu').click();
+    await page.getByTestId('tab-chat').click();
+    await expect(page.getByTestId('conversation')).toContainText(STUB_TEXT);
+    expect(errors).toEqual([]);
+  });
 });

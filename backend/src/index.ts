@@ -170,7 +170,8 @@ export async function buildServer(opts: {
       reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     // `liveControl` is added only when the adapter exists, so with the flag off the snapshot is unchanged.
     send('snapshot', {
-      events: store.recent(800),
+      // With Live Control on, buffered live messages (memory only) are added so a reload keeps them.
+      events: bridge ? bridge.snapshot(store.recent(800)) : store.recent(800),
       sources: providers.status(),
       ...(live ? { liveControl: true } : {}),
     });
