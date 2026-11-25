@@ -28,7 +28,24 @@ export type ResultRecord = {
   cost_usd: number;
   model: string;
   mock: boolean;
+  /** Set only on results saved from a real Grok Bot Desktop reply (by an explicit "Save as Result"). */
+  source?: DesktopSource;
 };
+/** Where a Grok Desktop result came from. No URLs or file paths: attachments are not reachable here. */
+export type DesktopSource = {
+  kind: 'grok-desktop';
+  agentId: string;
+  agentName: string;
+  threadId: string;
+  messageKey: string;
+  entryId: string;
+  timestamp: string;
+  attribution: string;
+  attachments: { name: string; type: string }[];
+};
+/** Desktop results use their own id range, so they can never collide with xAI task ids. */
+export const DESKTOP_ID_BASE = 1_000_000_000;
+export const isDesktopId = (id: number) => id >= DESKTOP_ID_BASE;
 export type ResultEntry = {
   id: number;
   title: string;
@@ -39,6 +56,8 @@ export type ResultEntry = {
   cost: number;
   pinned: boolean;
   read: boolean;
+  /** 'grok-desktop' for Desktop results; absent for xAI task results. */
+  src?: 'grok-desktop';
 };
 type Index = { keep: number; results: ResultEntry[] };
 
@@ -222,10 +241,75 @@ export class ResultStore {
     return rec;
   }
 
-  /** Keeps the newest `keep` unpinned results; pinned ones are never deleted automatically. */
+  /**
+   * Keeps the newest `keep` unpinned results; pinned ones are never deleted automatically. xAI and Grok Desktop
+   * results are counted separately, so Desktop ids (a higher range) never push xAI results out.
+   */
   private prune() {
-    const unpinned = this.index.results.filter((r) => !r.pinned).sort((a, b) => b.id - a.id);
-    for (const r of unpinned.slice(this.index.keep)) this.drop(r.id);
+    for (const desktop of [false, true]) {
+      const unpinned = this.index.results
+        .filter((r) => !r.pinned && isDesktopId(r.id) === desktop)
+        .sort((a, b) => b.id - a.id);
+      for (const r of unpinned.slice(this.index.keep)) this.drop(r.id);
+    }
+  }
+
+  /** The saved Desktop result for a message, if any (duplicate check). */
+  findDesktop(messageKey: string): number | undefined {
+    return this.index.results.find(
+      (r) => r.src === 'grok-desktop' && this.get(r.id)?.source?.messageKey === messageKey,
+    )?.id;
+  }
+
+  /**
+   * Saves one real Grok Bot Desktop reply the user explicitly chose. Pinned by default. Returns the existing id
+   * instead of saving twice. The record is written before the index, both atomically.
+   */
+  saveDesktop(input: {
+    title: string;
+    agent: string;
+    outputType: 'text' | 'markdown';
+    output: string;
+    source: DesktopSource;
+  }): { id: number; duplicate: boolean } {
+    const existing = this.findDesktop(input.source.messageKey);
+    if (existing !== undefined) return { id: existing, duplicate: true };
+    let id = Math.max(DESKTOP_ID_BASE, ...this.index.results.map((r) => r.id).filter(isDesktopId)) + 1;
+    while (this.index.results.some((r) => r.id === id) || this.read(`${id}.json`)) id++;
+    const rec: ResultRecord = {
+      task_id: id,
+      title: input.title,
+      details: `Saved from Grok Bot Desktop: ${input.source.agentName}, message ${input.source.entryId}.`,
+      agent: input.agent,
+      created_at: input.source.timestamp,
+      finished_at: input.source.timestamp,
+      status: 'done',
+      output_type: input.outputType,
+      output: input.output.slice(0, LIMITS.outputChars),
+      files: [],
+      tokens_in: 0,
+      tokens_out: 0,
+      cost_usd: 0,
+      model: 'Grok Desktop',
+      mock: false,
+      source: input.source,
+    };
+    this.write(`${id}.json`, JSON.stringify(rec, null, 1));
+    this.index.results.push({
+      id,
+      title: rec.title,
+      agent: rec.agent,
+      time: rec.finished_at,
+      status: 'done',
+      type: rec.output_type,
+      cost: 0,
+      pinned: true,
+      read: false,
+      src: 'grok-desktop',
+    });
+    this.prune();
+    this.saveIndex();
+    return { id, duplicate: false };
   }
   private drop(id: number) {
     this.index.results = this.index.results.filter((r) => r.id !== id);

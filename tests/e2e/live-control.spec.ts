@@ -39,6 +39,7 @@ test('Live Control flag off: no Live Grok Bot view and no live-control requests'
   const errors = await openBotMenu(page, '/');
   await expect(page.getByTestId('tab-chat')).toBeVisible();
   await expect(page.getByTestId('tab-live')).toHaveCount(0);
+  await expect(page.getByTestId('chat-source')).toHaveCount(0); // no source selector: xAI chat only
   await page.getByTestId('tab-chat').click();
   await expect(page.getByTestId('live-tab')).toHaveCount(0);
   const status = await page.evaluate(async () => (await fetch('/api/live-control/status')).status);
@@ -116,9 +117,9 @@ test.describe('Live Control flag on (stub CLI)', () => {
     await expect(ph).toHaveText('[widget]');
     await expect(ph.locator('a, button, input')).toHaveCount(0);
 
-    await expect(page.getByTestId('live-send-input')).toBeDisabled();
-    await expect(page.getByTestId('live-send-button')).toBeDisabled();
-    await expect(page.getByTestId('live-send-reason')).toHaveText(SEND_BLOCKED_REASON);
+    // No send box: sending stays disabled; the reason is shown next to "Open … in Grok Bot".
+    await expect(page.getByTestId('live-send-reason')).toContainText(SEND_BLOCKED_REASON);
+    await expect(page.getByTestId('live-open-desktop')).toBeEnabled();
 
     // A direct POST is refused by the server before the CLI is called.
     const r = await page.evaluate(async () => {
@@ -138,6 +139,38 @@ test.describe('Live Control flag on (stub CLI)', () => {
     expect(errors.filter((e) => !/403/.test(e))).toEqual([]);
   });
 
+  test('source selector and "Open in Grok Bot": verified agent link, reading resumes, nothing sent', async ({ page }) => {
+    const errors = await openBotMenu(page, ON_URL);
+    await page.getByTestId('tab-talk').click(); // the Chat view (default), from the "…" menu
+    await expect(page.getByTestId('chat-source-xai')).toHaveAttribute('aria-selected', 'true');
+    await page.getByTestId('chat-source-live').click();
+    await expect(page.getByTestId('live-tab')).toBeVisible();
+    await expect(page.getByTestId('live-state')).toHaveText(/Paused|Live/, { timeout: 30000 });
+    if ((await page.getByTestId('live-state').textContent()) === 'Live') {
+      await page.getByTestId('live-toggle').click(); // start from paused, as after every server start
+      await expect(page.getByTestId('live-state')).toHaveText('Paused');
+    }
+    // Record the link instead of handing it to the OS (headless Chrome must never launch an app).
+    await page.evaluate(() => {
+      (window as any).__links = [];
+      HTMLAnchorElement.prototype.click = function () {
+        (window as any).__links.push(this.href);
+      };
+    });
+    const open = page.getByTestId('live-open-desktop');
+    await expect(open).toHaveText(/Open .+ in Grok Bot/, { timeout: 30000 });
+    await open.click();
+    const links = await page.evaluate(() => (window as any).__links as string[]);
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatch(/^grokbot:\/\/app\/v1\/agent\?id=[A-Za-z0-9_-]{1,128}$/);
+    await expect(page.getByTestId('live-state')).toHaveText('Live', { timeout: 30000 });
+    await expect(page.getByTestId('live-open-note')).toBeVisible();
+    expect(stub.calls().some((a) => a[0] === 'send')).toBe(false);
+    await page.getByTestId('chat-source-xai').click();
+    await expect(page.getByTestId('live-tab')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
   test('a reloaded page keeps live messages in the conversation panel (in-memory buffer)', async ({ page }) => {
     // The previous test read the stub transcript; this is a fresh page load against the same server.
     const errors = await openBotMenu(page, ON_URL);
@@ -149,6 +182,85 @@ test.describe('Live Control flag on (stub CLI)', () => {
     await page.getByTestId('bot-menu').click();
     await page.getByTestId('tab-chat').click();
     await expect(page.getByTestId('conversation')).toContainText(STUB_TEXT);
+    expect(errors).toEqual([]);
+  });
+
+  test('Save as Result, Track as Task, link, Mark as Completed, Results source filter and delete', async ({ page }) => {
+    const errors = await openBotMenu(page, ON_URL);
+    await page.getByTestId('tab-live').click();
+    await expect(page.getByTestId('live-state')).toHaveText(/Paused|Live/, { timeout: 30000 });
+    if ((await page.getByTestId('live-state').textContent()) === 'Paused') await page.getByTestId('live-toggle').click();
+    await expect(page.getByTestId('live-state')).toHaveText('Live', { timeout: 30000 });
+    const msgs = page.getByTestId('live-msg');
+    const reply = msgs.filter({ hasText: STUB_TEXT });
+    const mine = msgs.filter({ hasText: '[stub] Hi Coz' });
+    await expect(reply).toHaveCount(1, { timeout: 30000 });
+    // The right action under the right message; none under the widget placeholder.
+    await expect(reply.getByTestId('live-track-task')).toHaveCount(0);
+    await expect(mine.getByTestId('live-save-result')).toHaveCount(0);
+    await expect(msgs.filter({ has: page.getByTestId('live-placeholder') }).locator('button')).toHaveCount(0);
+
+    // Save as Result: once; a second save of the same message is reported as a duplicate.
+    await reply.getByTestId('live-save-result').click();
+    await expect(reply.getByTestId('live-saved')).toHaveText(/Saved as #10000000\d\d/);
+    const id = Number((await reply.getByTestId('live-saved').textContent())!.match(/#(\d+)/)![1]);
+    const again = await page.evaluate(async (key) => {
+      const r = await fetch('/api/live-control/desktop/results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+      return r.json();
+    }, `11111111-1111-4111-8111-111111111111:t1s0`);
+    expect(again).toEqual({ id, duplicate: true });
+
+    // Track as Task; link the saved result → Result available; Mark as Completed → Completed.
+    await mine.getByTestId('live-track-task').click();
+    await expect(mine.getByTestId('live-tracked')).toBeVisible();
+    const task = page.getByTestId('desktop-task');
+    await expect(task).toHaveCount(1);
+    // The stub's widget after the request is a real "asks for input" entry, so that is the state shown.
+    await expect(task.getByTestId('desktop-task-state')).toHaveText('Waiting for your input');
+    await task.getByTestId('desktop-task-link').selectOption(String(id));
+    await expect(task.getByTestId('desktop-task-state')).toHaveText('Result available');
+    await expect(task).toContainText(`result #${id}`);
+    await task.getByTestId('desktop-task-complete').click();
+    await expect(task.getByTestId('desktop-task-state')).toHaveText('Completed');
+
+    // Results: Grok Desktop badge and source, source filter, View Original link, no Re-run.
+    await page.evaluate(() => {
+      (window as any).__links = [];
+      HTMLAnchorElement.prototype.click = function () {
+        (window as any).__links.push(this.href);
+      };
+    });
+    await page.getByTestId('open-results').click();
+    await expect(page.getByTestId('results-board')).toBeVisible();
+    const row = page.getByTestId(`result-row-${id}`);
+    await page.getByTestId('results-source').selectOption('xai');
+    await expect(row).toHaveCount(0);
+    await page.getByTestId('results-source').selectOption('grok-desktop');
+    await expect(row).toBeVisible();
+    await expect(row.getByTestId('desktop-badge')).toHaveText('Grok Desktop');
+    await row.click();
+    const detail = page.getByTestId('result-detail');
+    await expect(detail).toContainText(STUB_TEXT);
+    await expect(detail.getByTestId('desktop-source')).toContainText('in Grok Bot Desktop');
+    await expect(detail.getByTestId('result-rerun')).toHaveCount(0);
+    await expect(detail.getByTestId('result-pin')).toHaveAttribute('aria-pressed', 'true'); // pinned on save
+    await detail.getByTestId('desktop-view-original').click();
+    expect(await page.evaluate(() => (window as any).__links)).toEqual([
+      'grokbot://app/v1/agent?id=11111111-1111-4111-8111-111111111111',
+    ]);
+
+    // Delete (existing control): gone from Results, and the task's link is dropped.
+    await detail.getByTestId('result-delete').click();
+    await page.getByTestId('result-delete-yes').click();
+    await expect(row).toHaveCount(0);
+    await page.getByTestId('results-close').click();
+    await expect(task).not.toContainText(`result #${id}`, { timeout: 20000 });
+    await expect(reply.getByTestId('live-save-result')).toBeVisible();
+    expect(stub.calls().some((a) => a[0] === 'send')).toBe(false);
     expect(errors).toEqual([]);
   });
 });

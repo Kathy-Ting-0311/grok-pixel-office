@@ -15,6 +15,7 @@ import { useStore } from '../store';
 import { fmtTime, SourceBadge } from './common';
 import { usd } from './CompletionPopup';
 import { CopyButton, ResultOutput } from './Markdown';
+import { DesktopBadge, DesktopSource } from './DesktopSource';
 import { useResults } from './results';
 
 const statusCls: Record<ResultStatus, string> = {
@@ -92,6 +93,7 @@ function ResultList({
                 <span className="truncate font-bold">
                   #{r.id} {r.title}
                 </span>
+                {r.src === 'grok-desktop' && <DesktopBadge />}
               </span>
               <span className="flex items-center gap-1 text-[10px] text-stone-500">
                 <span className="flex items-center gap-0.5 rounded-full bg-paper px-1">
@@ -152,6 +154,7 @@ function ResultDetail({ id, onBack }: { id: number; onBack: () => void }) {
           </div>
           <div className="flex items-center gap-1 text-[10px] text-stone-600">
             {rec && <SourceBadge source={rec.mock ? 'simulated' : 'real'} />}
+            {entry.src === 'grok-desktop' && <DesktopBadge />}
             <span className="truncate">
               {bot?.name} · {new Date(entry.time).toLocaleString()} · {usd(entry.cost)}
               {rec && ` · ${rec.tokens_in + rec.tokens_out} tokens · ${rec.model}`}
@@ -164,18 +167,20 @@ function ResultDetail({ id, onBack }: { id: number; onBack: () => void }) {
         <a className="btn !min-h-0 !px-1.5 !py-0.5 !text-[10px]" href={resultsApi.downloadUrl(id)}>
           <Download size={11} /> Download
         </a>
-        <button
-          className="btn !min-h-0 !px-1.5 !py-0.5 !text-[10px]"
-          onClick={() =>
-            act(
-              () => resultsApi.rerun(id),
-              () => useStore.getState().toast('Re-run placed as a new task.', 'good'),
-            )
-          }
-          data-testid="result-rerun"
-        >
-          <RotateCcw size={11} /> {entry.status === 'done' ? 'Re-run' : 'Retry'}
-        </button>
+        {entry.src !== 'grok-desktop' && (
+          <button
+            className="btn !min-h-0 !px-1.5 !py-0.5 !text-[10px]"
+            onClick={() =>
+              act(
+                () => resultsApi.rerun(id),
+                () => useStore.getState().toast('Re-run placed as a new task.', 'good'),
+              )
+            }
+            data-testid="result-rerun"
+          >
+            <RotateCcw size={11} /> {entry.status === 'done' ? 'Re-run' : 'Retry'}
+          </button>
+        )}
         <button
           className={`btn !min-h-0 !px-1.5 !py-0.5 !text-[10px] ${entry.pinned ? 'btn-active' : ''}`}
           onClick={() => act(() => resultsApi.patch(id, { pinned: !entry.pinned }))}
@@ -219,7 +224,8 @@ function ResultDetail({ id, onBack }: { id: number; onBack: () => void }) {
       <div className="scroll-thin min-h-0 flex-1 overflow-auto px-3 py-2">
         {rec ? (
           <>
-            {rec.details && (
+            {rec.source && <DesktopSource source={rec.source} />}
+            {rec.details && !rec.source && (
               <p className="mb-2 whitespace-pre-wrap rounded bg-paper px-2 py-1 text-[11px] text-stone-600">
                 <b>Prompt:</b> {rec.details}
               </p>
@@ -243,6 +249,7 @@ export function ResultsBoard() {
   const [agent, setAgent] = useState('');
   const [status, setStatus] = useState<'' | ResultStatus>('');
   const [type, setType] = useState<'' | OutputType>('');
+  const [src, setSrc] = useState<'' | 'grok-desktop' | 'xai'>('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [keepDraft, setKeepDraft] = useState(String(keep));
@@ -275,11 +282,12 @@ export function ResultsBoard() {
           (!agent || r.agent === agent) &&
           (!status || r.status === status) &&
           (!type || r.type === type) &&
+          (!src || (src === 'grok-desktop') === (r.src === 'grok-desktop')) &&
           (!from || dateOf(r.time) >= from) &&
           (!to || dateOf(r.time) <= to),
       )
       .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.id - a.id);
-  }, [entries, q, agent, status, type, from, to]);
+  }, [entries, q, agent, status, type, src, from, to]);
   // Open on the newest result (desktop) instead of an empty detail pane.
   useEffect(() => {
     if (selected === undefined && items.length && !window.matchMedia('(max-width: 639px)').matches)
@@ -395,6 +403,17 @@ export function ResultsBoard() {
             <option value="done">Done</option>
             <option value="failed">Failed</option>
             <option value="cancelled">Cancelled</option>
+          </select>
+          <select
+            className="field !min-h-0 !py-0.5 text-xs"
+            value={src}
+            onChange={(e) => setSrc(e.target.value as '' | 'grok-desktop' | 'xai')}
+            aria-label="Source filter"
+            data-testid="results-source"
+          >
+            <option value="">All sources</option>
+            <option value="grok-desktop">Grok Desktop</option>
+            <option value="xai">xAI API</option>
           </select>
           <select
             className="field !min-h-0 !py-0.5 text-xs"

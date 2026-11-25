@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { botById, roster } from '../../shared/roster';
 import { splitSessions } from '../../shared/replay';
@@ -21,6 +21,8 @@ import { registerLiveControlRoutes } from './grokbot/routes';
 import { bridgeToOffice } from './grokbot/bridge';
 import { parseAgentMap } from './grokbot/mapping';
 import { hostGuarded, isLocalHost } from './hostCheck';
+import { registerDesktopRoutes } from './grokbot/desktopRoutes';
+import { DesktopTaskStore } from './grokbot/desktopTasks';
 
 const port = Number(process.env.OFFICE_PORT ?? 4319);
 const dbPath = process.env.OFFICE_DATABASE ?? resolve('data/office.db');
@@ -51,10 +53,8 @@ export async function buildServer(opts: {
   const publish = (e: Parameters<typeof providers.publish>[0]) => {
     if (!closed) providers.publish(e);
   };
-  const results = new ResultStore(
-    opts.resultsDir ?? process.env.OFFICE_RESULTS_DIR ?? resolve('data/results'),
-    grok.resultsKeep,
-  );
+  const resultsDir = opts.resultsDir ?? process.env.OFFICE_RESULTS_DIR ?? resolve('data/results');
+  const results = new ResultStore(resultsDir, grok.resultsKeep);
   const queue: TaskQueue = new TaskQueue(
     grok,
     publish,
@@ -237,6 +237,11 @@ export async function buildServer(opts: {
     ? bridgeToOffice(live, (e) => !closed && providers.broadcast(e), parseAgentMap(liveCfg.agentMap))
     : undefined;
   if (live) registerLiveControlRoutes(app, live, tokenOk, bridge!.mapping);
+  // Grok Desktop results (saved to the result store) and manual task tracking (data/grok-desktop/tasks.json).
+  if (live) {
+    const tasksFile = resultsDir === ':memory:' ? ':memory:' : join(dirname(resultsDir), 'grok-desktop', 'tasks.json');
+    registerDesktopRoutes(app, live, results, new DesktopTaskStore(tasksFile), bridge!.mapping);
+  }
   const agentIds = ['auto', ...roster.map((b) => b.id)] as [string, ...string[]];
   const newTask = z.object({
     title: z
@@ -314,6 +319,7 @@ export async function buildServer(opts: {
   app.post('/api/results/:id/rerun', async (req, reply) => {
     const rec = results.get(idParam(req));
     if (!rec) return reply.code(404).send({ error: 'Result not found.' });
+    if (rec.source) return reply.code(400).send({ error: 'Grok Desktop results cannot be re-run as xAI tasks.' });
     return result(
       reply,
       queue.create({

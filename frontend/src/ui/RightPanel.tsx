@@ -67,6 +67,8 @@ function BotPanel({ id }: { id: string }) {
   // Chat is the default view; Profile / Tasks / Activity live in the "..." menu.
   const [tab, setTab] = useState<'profile' | 'talk' | 'live' | 'tasks' | 'chat'>('talk');
   const liveOn = useLiveFlag((s) => s.enabled);
+  // Chat source: the existing xAI chat, or the real Grok Bot conversation (only while Live Control is on).
+  const [chatSource, setChatSource] = useState<'xai' | 'live'>('xai');
   const [menu, setMenu] = useState(false);
   const [clearAsk, setClearAsk] = useState(false);
   const [chatCount, setChatCount] = useState(0);
@@ -267,9 +269,31 @@ function BotPanel({ id }: { id: string }) {
           <ChevronRight size={14} />
         </button>
       </div>
-      {tab === 'talk' && (
+      {tab === 'talk' && liveOn && (
+        <div className="flex gap-1 px-3 pb-1" role="tablist" aria-label="Conversation source" data-testid="chat-source">
+          {(
+            [
+              ['xai', 'xAI Chat'],
+              ['live', 'Grok Bot Live'],
+            ] as const
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={chatSource === v}
+              className={`chip ${chatSource === v ? 'bg-ink text-cream' : 'bg-stone-200 text-stone-700'}`}
+              onClick={() => setChatSource(v)}
+              data-testid={`chat-source-${v}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {tab === 'talk' && (!liveOn || chatSource === 'xai') && (
         <BotChat bot={bot} clearAsk={clearAsk} setClearAsk={setClearAsk} onCount={setChatCount} />
       )}
+      {tab === 'talk' && liveOn && chatSource === 'live' && <LiveGrokBotTab bot={bot} />}
       {tab === 'live' && liveOn && <LiveGrokBotTab bot={bot} />}
       {tab !== 'talk' && tab !== 'live' && (
         <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1">

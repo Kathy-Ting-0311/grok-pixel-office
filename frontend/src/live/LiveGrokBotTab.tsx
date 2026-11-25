@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pause, Play, RefreshCw, Send } from 'lucide-react';
+import { ExternalLink, Pause, Play, RefreshCw } from 'lucide-react';
 import {
   SEND_BLOCKED_REASON,
   type LiveAttribution,
@@ -10,12 +10,23 @@ import {
 import type { Bot } from '../../../shared/types';
 import { loadLocal } from '../store';
 import { fmtTime } from '../ui/common';
+import { MessageActions, TrackedTasks, useDesktop } from './DesktopTasks';
 
 /**
  * "Live Grok Bot" tab: the real 1:1 transcript of the Grok Bot mapped to this character, read through
- * the local server. Read-only: the send box is shown but disabled. Nothing here is simulated; when live
- * data cannot be read the tab says so.
+ * the local server. Read-only: sending from here is disabled; "Open Grok Bot" opens the real conversation in
+ * Grok Bot Desktop instead. Nothing here is simulated; when live data cannot be read the tab says so.
  */
+
+/** Grok Bot Desktop's own declared link route (`/v1/agent`, id `[A-Za-z0-9_-]{1,128}`), verified in 1.3.0. */
+const AGENT_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const OPEN_APP = 'grokbot://app/v1/open';
+/** Hands a grokbot:// link to the OS (the browser may ask first). Never navigates this page away. */
+const launch = (url: string) => {
+  const a = document.createElement('a');
+  a.href = url;
+  a.click();
+};
 
 const POLL_MS = 5000;
 
@@ -56,11 +67,14 @@ export function LiveGrokBotTab({ bot }: { bot: Bot }) {
   const [messages, setMessages] = useState<LiveMessage[]>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [opened, setOpened] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
   const agentId = status?.mapping?.find((m) => m.rosterId === bot.id)?.agentId;
   const thread = agentId ? status?.threads.find((t) => t.id === agentId) : undefined;
   const known = !!thread;
+  // Saved results and tracked tasks for this thread (local server only), refreshed with the transcript.
+  const desktop = useDesktop(known ? agentId : undefined, messages?.length);
 
   // Status, polled while the tab is open (local server only; it never calls the CLI for this).
   useEffect(() => {
@@ -117,6 +131,21 @@ export function LiveGrokBotTab({ bot }: { bot: Bot }) {
     }
   };
 
+  // Only a discovered, non-owner 1:1 bot whose id matches the app's own pattern gets a direct link.
+  const linkable =
+    !!agentId &&
+    AGENT_ID.test(agentId) &&
+    !!status?.agents.some((a) => a.id === agentId && !a.owner);
+  // Bots are found only while reading runs: when paused before discovery, resume first (then the link appears).
+  const findFirst = !agentId && !!status?.paused;
+  const openDesktop = async () => {
+    if (findFirst) return void (await act('resume'));
+    launch(linkable ? `grokbot://app/v1/agent?id=${encodeURIComponent(agentId!)}` : OPEN_APP);
+    setOpened(true);
+    // Reading follows the conversation: resume if paused (this thread is already the active, faster one).
+    if (status?.paused) await act('resume');
+  };
+
   const look = status ? stateLook[status.state] : (['bg-stone-300', 'Checking…'] as const);
   const off = status?.state === 'off-error' || status?.state === 'unavailable';
   const nameOf = (id?: string) => status?.agents.find((a) => a.id === id)?.name;
@@ -145,47 +174,71 @@ export function LiveGrokBotTab({ bot }: { bot: Bot }) {
   else if (messages.length === 0) body = <Note>No messages read in this thread yet.</Note>;
   else
     body = (
-      <ol className="flex flex-col" aria-label={`Live transcript with ${bot.name}`} data-testid="live-messages">
-        {messages.map((m) => {
-          const mine = m.attribution === 'owner';
-          const [chip, label] = attrLook[m.attribution];
-          const who = mine
-            ? 'You'
-            : m.attribution === 'unknown'
-              ? 'Unknown sender'
-              : (nameOf(m.senderId) ?? thread?.name ?? bot.name);
-          return (
-            <li key={m.key} className={`mt-2 flex ${mine ? 'justify-end' : 'justify-start'}`} data-testid="live-msg">
-              <div
-                className={`max-w-[85%] whitespace-pre-wrap break-words rounded-xl px-2 py-1 text-xs ${mine ? 'rounded-br-sm bg-amber-100' : 'rounded-bl-sm bg-white'}`}
+      <>
+        <TrackedTasks messages={messages} desktop={desktop} />
+        <ol
+          className="flex flex-col"
+          aria-label={`Live transcript with ${bot.name}`}
+          data-testid="live-messages"
+        >
+          {messages.map((m) => {
+            const mine = m.attribution === 'owner';
+            const [chip, label] = attrLook[m.attribution];
+            const who = mine
+              ? 'You'
+              : m.attribution === 'unknown'
+                ? 'Unknown sender'
+                : (nameOf(m.senderId) ?? thread?.name ?? bot.name);
+            return (
+              <li
+                key={m.key}
+                className={`mt-2 flex flex-col ${mine ? 'items-end' : 'items-start'}`}
+                data-testid="live-msg"
               >
-                <div className="flex items-center gap-1 text-[10px] font-bold">
-                  {!mine && m.attribution !== 'unknown' && (
-                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: bot.color }} />
+                <div
+                  className={`max-w-[85%] whitespace-pre-wrap break-words rounded-xl px-2 py-1 text-xs ${mine ? 'rounded-br-sm bg-amber-100' : 'rounded-bl-sm bg-white'}`}
+                >
+                  <div className="flex items-center gap-1 text-[10px] font-bold">
+                    {!mine && m.attribution !== 'unknown' && (
+                      <span
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ background: bot.color }}
+                      />
+                    )}
+                    {who}
+                    <span
+                      className={`chip ${chip}`}
+                      title={`Attribution: ${m.basis}`}
+                      data-testid="live-attr"
+                    >
+                      {label}
+                    </span>
+                  </div>
+                  {m.placeholder ? (
+                    <span className="italic text-stone-500" data-testid="live-placeholder">
+                      {m.text}
+                    </span>
+                  ) : (
+                    m.text
                   )}
-                  {who}
-                  <span className={`chip ${chip}`} title={`Attribution: ${m.basis}`} data-testid="live-attr">
-                    {label}
-                  </span>
+                  <div className="text-right text-[9px] leading-3 text-stone-400">
+                    {fmtTime(m.timestamp)}
+                  </div>
                 </div>
-                {m.placeholder ? (
-                  <span className="italic text-stone-500" data-testid="live-placeholder">
-                    {m.text}
-                  </span>
-                ) : (
-                  m.text
-                )}
-                <div className="text-right text-[9px] leading-3 text-stone-400">{fmtTime(m.timestamp)}</div>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+                <MessageActions m={m} desktop={desktop} />
+              </li>
+            );
+          })}
+        </ol>
+      </>
     );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="live-tab">
-      <div className="flex flex-wrap items-center gap-1.5 px-3 pb-1 text-[10px]" data-testid="live-indicator">
+      <div
+        className="flex flex-wrap items-center gap-1.5 px-3 pb-1 text-[10px]"
+        data-testid="live-indicator"
+      >
         <span className={`h-2 w-2 rounded-full ${look[0]}`} aria-hidden />
         <span className="font-bold" data-testid="live-state">
           {look[1]}
@@ -205,7 +258,12 @@ export function LiveGrokBotTab({ bot }: { bot: Bot }) {
             </button>
           )}
           {off && (
-            <button className={btn} disabled={busy} onClick={() => void act('reconnect')} data-testid="live-reconnect">
+            <button
+              className={btn}
+              disabled={busy}
+              onClick={() => void act('reconnect')}
+              data-testid="live-reconnect"
+            >
               <RefreshCw size={10} /> Reconnect
             </button>
           )}
@@ -224,31 +282,47 @@ export function LiveGrokBotTab({ bot }: { bot: Bot }) {
       <div ref={scroller} className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 py-1">
         {body}
       </div>
-      <form className="px-3 pb-2 pt-1" onSubmit={(e) => e.preventDefault()} noValidate>
-        <div className="relative">
-          <textarea
-            className="block w-full resize-none rounded-2xl bg-white py-1.5 pl-3 pr-8 text-xs leading-[18px] outline-none disabled:bg-stone-100 disabled:text-stone-400"
-            rows={1}
-            disabled
-            placeholder={`Message ${bot.name} in Grok Bot Desktop`}
-            aria-label={`Message ${bot.name} in Grok Bot Desktop (unavailable)`}
-            aria-describedby="live-send-reason"
-            data-testid="live-send-input"
-          />
-          <button
-            type="button"
-            className="absolute bottom-1 right-1 rounded-full p-1 disabled:text-stone-300"
-            disabled
-            aria-label="Send to Grok Bot Desktop (unavailable)"
-            data-testid="live-send-button"
-          >
-            <Send size={13} />
-          </button>
-        </div>
-        <p id="live-send-reason" className="mt-1 text-[10px] text-stone-600" data-testid="live-send-reason">
-          {sendReason}
+      <div className="px-3 pb-2 pt-1">
+        <button
+          type="button"
+          className="btn w-full justify-center !text-xs"
+          disabled={!status || off}
+          onClick={() => void openDesktop()}
+          aria-describedby="live-send-reason"
+          data-testid="live-open-desktop"
+        >
+          {findFirst ? <Play size={12} /> : <ExternalLink size={12} />}{' '}
+          {findFirst
+            ? `Resume to find ${bot.name}'s Grok Bot`
+            : linkable
+              ? `Open ${thread?.name ?? bot.name} in Grok Bot`
+              : 'Open Grok Bot'}
+        </button>
+        {opened && (
+          <p className="mt-1 text-[10px] text-stone-600" data-testid="live-open-note">
+            {linkable
+              ? 'Asked Grok Bot to open this conversation. Replies you get there appear here within about 10–15 s. '
+              : 'No direct link for this bot, so Grok Bot was opened on its home screen. '}
+            {linkable && (
+              <button
+                type="button"
+                className="underline"
+                onClick={() => launch(OPEN_APP)}
+                data-testid="live-open-app"
+              >
+                Didn't open? Open the app instead.
+              </button>
+            )}
+          </p>
+        )}
+        <p
+          id="live-send-reason"
+          className="mt-1 text-[10px] text-stone-600"
+          data-testid="live-send-reason"
+        >
+          {sendReason} Send from Grok Bot Desktop instead.
         </p>
-      </form>
+      </div>
     </div>
   );
 }
