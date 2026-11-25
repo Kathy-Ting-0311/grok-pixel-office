@@ -16,7 +16,7 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     // Never a real key or the real task file in browser tests.
-    env: { OFFICE_DATABASE: ':memory:', OFFICE_PORT: '4339', OFFICE_FRONTEND_PORT: '5193', XAI_API_KEY: '', MOCK_MODE: 'true', OFFICE_TASKS_FILE: ':memory:', OFFICE_CHAT_FILE: ':memory:', OFFICE_RESULTS_DIR: ':memory:', OFFICE_TOKEN: '', MOCK_DELAY_MS: '250' },
+    env: { OFFICE_DATABASE: ':memory:', OFFICE_PORT: '4339', OFFICE_FRONTEND_PORT: '5193', XAI_API_KEY: '', MOCK_MODE: 'true', OFFICE_TASKS_FILE: ':memory:', OFFICE_CHAT_FILE: ':memory:', OFFICE_RESULTS_DIR: ':memory:', OFFICE_TOKEN: '', MOCK_DELAY_MS: '250', ENABLE_GROKBOT_LIVE_CONTROL: 'false' },
     url: 'http://127.0.0.1:5193',
     reuseExistingServer: false,
     timeout: 60000,

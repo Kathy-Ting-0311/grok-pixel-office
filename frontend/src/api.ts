@@ -4,6 +4,7 @@ import { splitSessions, type ReplaySession } from '../../shared/replay';
 import type { Appearance, BotEvent, OfficeLayout } from '../../shared/types';
 import type { Progression } from '../../shared/progression';
 import { loadLocal, saveLocal, useStore, type Settings, type SourcesStatus } from './store';
+import { setLiveControlEnabled } from './live/liveFlag';
 
 let source: EventSource | undefined;
 let fallbackSim: SimulationProvider | undefined;
@@ -83,6 +84,7 @@ function connectStream() {
     st.setConnection('backend');
     st.setSources(data.sources);
     st.ingest(data.events, { snapshot: true });
+    setLiveControlEnabled((data as { liveControl?: boolean }).liveControl === true);
   });
   es.addEventListener('event', (m) =>
     useStore.getState().ingest([JSON.parse((m as MessageEvent).data)]),

@@ -14,6 +14,12 @@ import { TaskQueue } from './tasks';
 import { ChatService } from './chat';
 import { generateImage, isImage, mimeOf, ResultStore } from './results';
 import type { runAgent } from './grok';
+import { loadLiveControlConfig, type LiveControlConfig } from './grokbot/config';
+import { createCliClient, type CliClient } from './grokbot/cli';
+import { GrokBotGatewayAdapter } from './grokbot/adapter';
+import { registerLiveControlRoutes } from './grokbot/routes';
+import { bridgeToOffice } from './grokbot/bridge';
+import { parseAgentMap } from './grokbot/mapping';
 
 const port = Number(process.env.OFFICE_PORT ?? 4319);
 const dbPath = process.env.OFFICE_DATABASE ?? resolve('data/office.db');
@@ -33,6 +39,8 @@ export async function buildServer(opts: {
   /** Results folder; ':memory:' for tests. */
   resultsDir?: string;
   fetchImpl?: typeof fetch;
+  /** Grok Bot Live Control (tests inject config and a fake CLI). Off unless enabled. */
+  liveControl?: { config?: LiveControlConfig; client?: CliClient };
 }) {
   const store = openStore(opts.dbPath);
   const providers = new ProviderManager(store);
@@ -160,7 +168,13 @@ export async function buildServer(opts: {
     });
     const send = (event: string, data: unknown) =>
       reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    send('snapshot', { events: store.recent(800), sources: providers.status() });
+    // `liveControl` is added only when the adapter exists, so with the flag off the snapshot is unchanged.
+    send('snapshot', {
+      // With Live Control on, buffered live messages (memory only) are added so a reload keeps them.
+      events: bridge ? bridge.snapshot(store.recent(800)) : store.recent(800),
+      sources: providers.status(),
+      ...(live ? { liveControl: true } : {}),
+    });
     const off = providers.subscribe((e) => send('event', e));
     const beat = setInterval(() => reply.raw.write(`: ping\n\n`), 15000);
     const sourcesBeat = setInterval(() => send('sources', providers.status()), 5000);
@@ -188,6 +202,16 @@ export async function buildServer(opts: {
         .code(401)
         .send({ error: 'This server requires an access token (x-office-token header).' });
   });
+  // Grok Bot Live Control: nothing below is constructed, registered or scheduled when the flag is off.
+  const liveCfg = opts.liveControl?.config ?? loadLiveControlConfig();
+  const live = liveCfg.enabled
+    ? new GrokBotGatewayAdapter(liveCfg, opts.liveControl?.client ?? createCliClient(liveCfg))
+    : undefined;
+  // Live messages are broadcast over SSE only, never stored (decision D4).
+  const bridge = live
+    ? bridgeToOffice(live, (e) => !closed && providers.broadcast(e), parseAgentMap(liveCfg.agentMap))
+    : undefined;
+  if (live) registerLiveControlRoutes(app, live, tokenOk, bridge!.mapping);
   const agentIds = ['auto', ...roster.map((b) => b.id)] as [string, ...string[]];
   const newTask = z.object({
     title: z
@@ -427,11 +451,14 @@ export async function buildServer(opts: {
     closed = true;
     clearInterval(prune);
     queue.stop();
+    live?.stop();
     providers.stop();
     store.close();
   });
   await providers.restore({ simulation: opts.simulation ?? true, cacheDir: opts.cacheDir });
-  return { app, store, providers, queue };
+  // Not awaited: a slow or missing CLI must never delay or break server start.
+  if (live) void live.start({ paused: liveCfg.startPaused });
+  return { app, store, providers, queue, live };
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop()!)) {

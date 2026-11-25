@@ -50,6 +50,11 @@ export class ProviderManager {
     return () => this.listeners.delete(fn);
   }
 
+  /** Broadcast WITHOUT storing (Grok Bot Live Control, decision D4: live messages are not persisted). */
+  broadcast(e: BotEvent) {
+    for (const l of this.listeners) l(e);
+  }
+
   /** Persist + broadcast. Returns false for duplicates. */
   publish(e: BotEvent) {
     if (!this.store.addEvent(e)) return false;
